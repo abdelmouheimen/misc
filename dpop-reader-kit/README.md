@@ -19,15 +19,30 @@ un générateur de preuves DPoP (Python) et une série de scénarios d'attaque r
 
 ## Démarrage
 
+### Tout en Docker (une commande)
+
+```bash
+docker compose up --build
+#   SPA React ...... http://localhost:5173
+#   Backend API .... http://localhost:8099
+```
+
+Rien d'autre à installer : ni JDK, ni Node. Le premier build compile le backend (Maven)
+et la SPA (npm) dans les images ; les lancements suivants sont immédiats.
+
+### …ou sans Docker
+
 ```bash
 # 1. Backend (DPoP exigé, port 8099)
 cd backend && mvn spring-boot:run
-#    …ou sans Maven :   docker compose up --build
 
 # 2. SPA React (port 5173), dans un autre terminal
 cd frontend && npm install && npm run dev
 #    puis ouvrez http://localhost:5173/
 ```
+
+> Les scripts d'attaque (`attacks/`) requièrent Python + `cryptography` sur la machine hôte,
+> quel que soit le mode de lancement du backend.
 
 Dans la SPA : **Se connecter** signe une preuve DPoP et ouvre une session ; **Renouveler**
 déclenche une rotation ; **Tenter d'exporter la clé** démontre que la clé privée est

@@ -1,8 +1,12 @@
-# Lance le backend du lab. Page de test : http://localhost:8099/
+# Lance TOUT le lab : backend + SPA React. Une seule commande.
 #
 #   docker compose up --build
 #
+#   SPA React ........ http://localhost:5173
+#   Backend API ...... http://localhost:8099
+#
 # Le store de jetons est en mémoire : aucune base de données n'est nécessaire.
+# Les deux origines sont distinctes ; le backend autorise l'origine de la SPA via CORS.
 services:
   backend:
     build: ./backend
@@ -11,3 +15,12 @@ services:
     environment:
       # Cœur du lab : DPoP exigé. Passez à "false" pour comparer au mode bearer classique.
       DPOP_REQUIRED: "true"
+      # Origine autorisée par le CORS (doit correspondre au port publié de la SPA).
+      CORS_ALLOWED_ORIGIN: "http://localhost:5173"
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "5173:80"
+    depends_on:
+      - backend
