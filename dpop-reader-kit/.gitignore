@@ -1,0 +1,15 @@
+# Java / Maven
+backend/target/
+*.class
+
+# Clés générées par les scripts et le générateur (ne jamais committer)
+*.pem
+
+# IDE
+.idea/
+*.iml
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db

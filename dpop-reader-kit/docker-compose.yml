@@ -1,0 +1,13 @@
+# Lance le backend du lab. Page de test : http://localhost:8099/
+#
+#   docker compose up --build
+#
+# Le store de jetons est en mémoire : aucune base de données n'est nécessaire.
+services:
+  backend:
+    build: ./backend
+    ports:
+      - "8099:8099"
+    environment:
+      # Cœur du lab : DPoP exigé. Passez à "false" pour comparer au mode bearer classique.
+      DPOP_REQUIRED: "true"

@@ -1,0 +1,15 @@
+server:
+  port: 8099
+
+spring:
+  application:
+    name: dpop-lab-backend
+
+# Cœur du lab : DPoP est exigé sur les endpoints d'authentification.
+# Passez à false pour observer le comportement "bearer" classique (voir README).
+dpop:
+  required: true
+
+logging:
+  level:
+    com.example.dpoplab: INFO

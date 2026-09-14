@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DPoP Lab — page de test</title>
+<style>
+  :root { color-scheme: light dark; }
+  body { font: 15px/1.5 system-ui, sans-serif; max-width: 820px; margin: 2rem auto; padding: 0 1rem; }
+  h1 { font-size: 1.4rem; }
+  button { font: inherit; padding: .5rem .9rem; margin: .2rem .3rem .2rem 0; cursor: pointer;
+           border: 1px solid #888; border-radius: 6px; background: #2e75b6; color: #fff; }
+  button.secondary { background: transparent; color: inherit; }
+  pre { background: #00000010; padding: .8rem; border-radius: 6px; overflow-x: auto; white-space: pre-wrap; }
+  .ok { color: #2e7d32; font-weight: 600; } .ko { color: #b3261e; font-weight: 600; }
+  code { background: #00000012; padding: 0 .25em; border-radius: 3px; }
+  .muted { color: #888; }
+</style>
+</head>
+<body>
+<h1>DPoP Lab — page de test</h1>
+<p>Cette page génère une paire de clés EC P-256 <strong>non exportable</strong> via Web Crypto,
+puis signe des preuves DPoP réelles pour dialoguer avec le backend. Ouvrez la console pour tout voir.</p>
+
+<p>
+  <button onclick="doConnect()">1. Se connecter (DPoP)</button>
+  <button onclick="doRefresh()">2. Renouveler (rotation)</button>
+  <button class="secondary" onclick="tryExport()">3. Tenter d'exporter la clé privée</button>
+  <button class="secondary" onclick="showTokens()">Voir la table des jetons</button>
+</p>
+<pre id="out">Prêt.</pre>
+<p class="muted">jkt de cette page : <code id="jkt">—</code></p>
+
+<script>
+const out = document.getElementById('out');
+let keyPair, publicJwk;
+
+function log(msg, cls) {
+  const line = cls ? `<span class="${cls}">${msg}</span>` : msg;
+  out.innerHTML = line + "\n\n" + out.innerHTML;
+}
+
+const b64u = (buf) => btoa(String.fromCharCode(...new Uint8Array(buf)))
+  .replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+
+async function ensureKey() {
+  if (keyPair) return;
+  // extractable:false -> la clé privée est inaccessible à JavaScript.
+  keyPair = await crypto.subtle.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, false, ['sign']);
+  publicJwk = await crypto.subtle.exportKey('jwk', keyPair.publicKey);
+  const jwk = { crv: publicJwk.crv, kty: publicJwk.kty, x: publicJwk.x, y: publicJwk.y };
+  const canon = JSON.stringify({ crv: jwk.crv, kty: jwk.kty, x: jwk.x, y: jwk.y });
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(canon));
+  document.getElementById('jkt').textContent = b64u(digest);
+}
+
+async function buildProof(method, url) {
+  await ensureKey();
+  const header = { typ: 'dpop+jwt', alg: 'ES256', jwk: { crv: publicJwk.crv, kty: publicJwk.kty, x: publicJwk.x, y: publicJwk.y } };
+  const payload = { jti: crypto.randomUUID(), htm: method, htu: url, iat: Math.floor(Date.now() / 1000) };
+  const signingInput = b64u(new TextEncoder().encode(JSON.stringify(header)))
+    + '.' + b64u(new TextEncoder().encode(JSON.stringify(payload)));
+  const sig = await crypto.subtle.sign({ name: 'ECDSA', hash: 'SHA-256' },
+    keyPair.privateKey, new TextEncoder().encode(signingInput));
+  return signingInput + '.' + b64u(sig);
+}
+
+async function call(path) {
+  const url = location.origin + path;
+  const proof = await buildProof('POST', url);
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'DPoP': proof, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ uid: 'alice' }),
+    credentials: 'include',
+  });
+  const body = await res.json();
+  const cls = body.status === 'AUTHENTICATED' ? 'ok' : 'ko';
+  log(`${path} → <span class="${cls}">${body.status}</span>${body.reason ? ' (' + body.reason + ')' : ''}`);
+  return body;
+}
+
+const doConnect = () => call('/login/connection');
+const doRefresh = () => call('/login/refresh');
+
+async function tryExport() {
+  await ensureKey();
+  try {
+    await crypto.subtle.exportKey('jwk', keyPair.privateKey);
+    log("La clé privée a été exportée — inattendu !", 'ko');
+  } catch (e) {
+    log("Export refusé : la clé privée est inaccessible à JavaScript (extractable:false). " + e.name, 'ok');
+  }
+}
+
+async function showTokens() {
+  const res = await fetch(location.origin + '/debug/tokens');
+  log(JSON.stringify(await res.json(), null, 2));
+}
+</script>
+</body>
+</html>
