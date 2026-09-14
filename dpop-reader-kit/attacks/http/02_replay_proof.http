@@ -1,0 +1,52 @@
+# Scénario 2 — Rejeu d'une preuve capturée à l'identique.
+# Même une preuve parfaitement valide ne peut servir qu'une fois (jti unique).
+
+### Remise à zéro
+POST {{baseUrl}}/debug/reset
+
+### Preuve de connexion
+POST {{baseUrl}}/debug/proof
+Content-Type: application/json
+
+{ "key": "client", "htu": "{{baseUrl}}/login/connection" }
+
+> {% client.global.set("connectProof", response.body.proof); %}
+
+### Connexion
+POST {{baseUrl}}/login/connection
+Content-Type: application/json
+DPoP: {{connectProof}}
+
+{ "uid": "alice" }
+
+> {% client.global.set("refresh", response.body.refreshToken); %}
+
+### Une SEULE preuve de refresh, que l'on va rejouer
+POST {{baseUrl}}/debug/proof
+Content-Type: application/json
+
+{ "key": "client", "htu": "{{baseUrl}}/login/refresh" }
+
+> {% client.global.set("refreshProof", response.body.proof); %}
+
+### Première utilisation -> acceptée
+POST {{baseUrl}}/login/refresh
+DPoP: {{refreshProof}}
+X-Refresh-Token: {{refresh}}
+
+> {%
+    client.test("première utilisation acceptée", function () {
+        client.assert(response.body.status === "AUTHENTICATED", "attendu AUTHENTICATED");
+    });
+%}
+
+### Rejeu de la MÊME preuve -> rejeté (jti déjà vu)
+POST {{baseUrl}}/login/refresh
+DPoP: {{refreshProof}}
+X-Refresh-Token: {{refresh}}
+
+> {%
+    client.test("rejeu bloqué", function () {
+        client.assert(response.body.status === "NONE", "le rejeu aurait dû être rejeté");
+    });
+%}

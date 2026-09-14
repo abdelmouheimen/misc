@@ -1,0 +1,82 @@
+# Scénario 5 — Manipulations de l'en-tête JOSE : alg, jwk, signature.
+# La liste blanche ES256 et les contrôles du JWK ferment les attaques classiques sur les JWT.
+
+### Remise à zéro
+POST {{baseUrl}}/debug/reset
+
+### Connexion préalable
+POST {{baseUrl}}/debug/proof
+Content-Type: application/json
+
+{ "key": "client", "htu": "{{baseUrl}}/login/connection" }
+
+> {% client.global.set("connectProof", response.body.proof); %}
+
+###
+POST {{baseUrl}}/login/connection
+Content-Type: application/json
+DPoP: {{connectProof}}
+
+{ "uid": "alice" }
+
+> {% client.global.set("refresh", response.body.refreshToken); %}
+
+### alg: none (preuve non signée)
+POST {{baseUrl}}/debug/proof
+Content-Type: application/json
+
+{ "key": "client", "htu": "{{baseUrl}}/login/refresh", "alg": "none" }
+
+> {% client.global.set("p", response.body.proof); %}
+
+###
+POST {{baseUrl}}/login/refresh
+DPoP: {{p}}
+X-Refresh-Token: {{refresh}}
+
+> {% client.test("alg:none bloqué", function () { client.assert(response.body.status === "NONE"); }); %}
+
+### typ ≠ dpop+jwt
+POST {{baseUrl}}/debug/proof
+Content-Type: application/json
+
+{ "key": "client", "htu": "{{baseUrl}}/login/refresh", "typ": "jwt" }
+
+> {% client.global.set("p", response.body.proof); %}
+
+###
+POST {{baseUrl}}/login/refresh
+DPoP: {{p}}
+X-Refresh-Token: {{refresh}}
+
+> {% client.test("typ invalide bloqué", function () { client.assert(response.body.status === "NONE"); }); %}
+
+### Clé privée incluse dans le jwk
+POST {{baseUrl}}/debug/proof
+Content-Type: application/json
+
+{ "key": "client", "htu": "{{baseUrl}}/login/refresh", "privateInJwk": true }
+
+> {% client.global.set("p", response.body.proof); %}
+
+###
+POST {{baseUrl}}/login/refresh
+DPoP: {{p}}
+X-Refresh-Token: {{refresh}}
+
+> {% client.test("jwk privé bloqué", function () { client.assert(response.body.status === "NONE"); }); %}
+
+### Charge utile falsifiée après signature
+POST {{baseUrl}}/debug/proof
+Content-Type: application/json
+
+{ "key": "client", "htu": "{{baseUrl}}/login/refresh", "tamper": true }
+
+> {% client.global.set("p", response.body.proof); %}
+
+###
+POST {{baseUrl}}/login/refresh
+DPoP: {{p}}
+X-Refresh-Token: {{refresh}}
+
+> {% client.test("signature invalide bloquée", function () { client.assert(response.body.status === "NONE"); }); %}

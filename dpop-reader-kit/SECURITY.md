@@ -10,6 +10,8 @@ Volontairement, pour rester lisible :
 - **les jetons sont renvoyés en clair** dans le corps des réponses pour faciliter les
   démonstrations (en production, ils ne vivent que dans des cookies `HttpOnly`) ;
 - **un endpoint `/debug/tokens`** expose la table des jetons ;
+- **un endpoint `/debug/proof`** fait signer des preuves DPoP par le serveur (pour les fichiers
+  `.http`), ce qui contredit le principe même de DPoP — c'est un raccourci pédagogique ;
 - **le store est en mémoire**, non partagé entre instances ;
 - **les cookies ne sont pas `Secure`** (le lab tourne en HTTP sur `localhost`).
 

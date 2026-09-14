@@ -54,12 +54,20 @@ distinctes : le backend expose donc du **CORS** autorisant l'en-tête `DPoP` et 
 
 ### Rejouer les attaques
 
+Deux formats, au choix :
+
 ```bash
-# Un jeton volé ne suffit pas
+# a) Scripts shell (zéro IDE, idéal en CI)
 cd attacks && bash 01_stolen_refresh_wrong_key.sh
-# Tout rejouer
 bash attacks/run_all.sh
+
+# b) Fichiers .http cliquables (IntelliJ / WebStorm, ou httpyac)
+npx httpyac send attacks/http/01_stolen_refresh_wrong_key.http --all --env dev
 ```
+
+Les fichiers `.http` (dossier [`attacks/http/`](attacks/http/)) contiennent des assertions
+et s'ouvrent directement dans le client HTTP d'IntelliJ. Voir leur README pour le détail
+(et pourquoi ils s'appuient sur un endpoint de laboratoire `/debug/proof`).
 
 ## Structure
 

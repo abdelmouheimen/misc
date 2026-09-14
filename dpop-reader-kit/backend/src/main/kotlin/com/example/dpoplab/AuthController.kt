@@ -56,9 +56,11 @@ class AuthController(
     fun refresh(request: HttpServletRequest, response: HttpServletResponse): ConnectionResponse {
         val jkt = resolveJkt(request) ?: return ConnectionResponse("NONE", "DPoP missing or invalid")
 
-        // Le refresh peut arriver par cookie (navigateur) ou par en-tête (scripts d'attaque).
-        val refreshToken = request.cookies?.firstOrNull { it.name == "refresh_token" }?.value
-            ?: request.getHeader("X-Refresh-Token")
+        // Le refresh arrive par cookie (navigateur réel) ou par en-tête (scripts d'attaque,
+        // fichiers .http). L'en-tête prime lorsqu'il est présent : c'est le moyen d'injecter
+        // un jeton "volé" sans être masqué par le cookie de session du client HTTP.
+        val refreshToken = request.getHeader("X-Refresh-Token")
+            ?: request.cookies?.firstOrNull { it.name == "refresh_token" }?.value
 
         val pair = try {
             tokenStore.refresh(refreshToken, jkt.ifEmpty { null }, dpopRequired)

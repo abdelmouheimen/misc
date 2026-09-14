@@ -1,0 +1,70 @@
+# Scénario 6 — Réutilisation d'un refresh token déjà tourné.
+# La rotation transforme le vol en signal : rejouer un ancien jeton révoque la session.
+
+### Remise à zéro
+POST {{baseUrl}}/debug/reset
+
+### Connexion
+POST {{baseUrl}}/debug/proof
+Content-Type: application/json
+
+{ "key": "client", "htu": "{{baseUrl}}/login/connection" }
+
+> {% client.global.set("connectProof", response.body.proof); %}
+
+###
+POST {{baseUrl}}/login/connection
+Content-Type: application/json
+DPoP: {{connectProof}}
+
+{ "uid": "alice" }
+
+> {% client.global.set("oldRefresh", response.body.refreshToken); %}
+
+### Rotation légitime (le client renouvelle avec sa clé)
+POST {{baseUrl}}/debug/proof
+Content-Type: application/json
+
+{ "key": "client", "htu": "{{baseUrl}}/login/refresh" }
+
+> {% client.global.set("p", response.body.proof); %}
+
+###
+POST {{baseUrl}}/login/refresh
+DPoP: {{p}}
+X-Refresh-Token: {{oldRefresh}}
+
+> {%
+    client.global.set("newRefresh", response.body.refreshToken);
+    client.test("rotation OK", function () { client.assert(response.body.status === "AUTHENTICATED"); });
+%}
+
+### Un attaquant rejoue l'ANCIEN refresh (avec une preuve valide)
+POST {{baseUrl}}/debug/proof
+Content-Type: application/json
+
+{ "key": "client", "htu": "{{baseUrl}}/login/refresh" }
+
+> {% client.global.set("p", response.body.proof); %}
+
+###
+POST {{baseUrl}}/login/refresh
+DPoP: {{p}}
+X-Refresh-Token: {{oldRefresh}}
+
+> {% client.test("réutilisation détectée", function () { client.assert(response.body.status === "NONE"); }); %}
+
+### Conséquence : même le refresh LÉGITIME courant est révoqué
+POST {{baseUrl}}/debug/proof
+Content-Type: application/json
+
+{ "key": "client", "htu": "{{baseUrl}}/login/refresh" }
+
+> {% client.global.set("p", response.body.proof); %}
+
+###
+POST {{baseUrl}}/login/refresh
+DPoP: {{p}}
+X-Refresh-Token: {{newRefresh}}
+
+> {% client.test("session entièrement révoquée", function () { client.assert(response.body.status === "NONE"); }); %}

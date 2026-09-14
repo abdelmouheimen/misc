@@ -1,0 +1,60 @@
+# Scénario 4 — Preuve trop ancienne ou datée dans le futur.
+# iat borne la durée de vie d'une preuve.
+
+### Remise à zéro
+POST {{baseUrl}}/debug/reset
+
+### Connexion préalable
+POST {{baseUrl}}/debug/proof
+Content-Type: application/json
+
+{ "key": "client", "htu": "{{baseUrl}}/login/connection" }
+
+> {% client.global.set("connectProof", response.body.proof); %}
+
+###
+POST {{baseUrl}}/login/connection
+Content-Type: application/json
+DPoP: {{connectProof}}
+
+{ "uid": "alice" }
+
+> {% client.global.set("refresh", response.body.refreshToken); %}
+
+### Preuve avec iat il y a 1 heure
+POST {{baseUrl}}/debug/proof
+Content-Type: application/json
+
+{ "key": "client", "htu": "{{baseUrl}}/login/refresh", "iatOffset": -3600 }
+
+> {% client.global.set("staleProof", response.body.proof); %}
+
+### -> rejet (iat hors fenêtre)
+POST {{baseUrl}}/login/refresh
+DPoP: {{staleProof}}
+X-Refresh-Token: {{refresh}}
+
+> {%
+    client.test("iat périmé bloqué", function () {
+        client.assert(response.body.status === "NONE", "preuve périmée aurait dû être rejetée");
+    });
+%}
+
+### Preuve avec iat dans 1 heure (pré-générée)
+POST {{baseUrl}}/debug/proof
+Content-Type: application/json
+
+{ "key": "client", "htu": "{{baseUrl}}/login/refresh", "iatOffset": 3600 }
+
+> {% client.global.set("futureProof", response.body.proof); %}
+
+### -> rejet (iat dans le futur)
+POST {{baseUrl}}/login/refresh
+DPoP: {{futureProof}}
+X-Refresh-Token: {{refresh}}
+
+> {%
+    client.test("iat futur bloqué", function () {
+        client.assert(response.body.status === "NONE", "preuve future aurait dû être rejetée");
+    });
+%}

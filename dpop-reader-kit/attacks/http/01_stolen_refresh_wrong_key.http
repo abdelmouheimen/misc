@@ -1,0 +1,49 @@
+# Scénario 1 — Refresh token volé, présenté avec la clé de l'attaquant.
+# La démonstration centrale de DPoP : un jeton valide ne suffit plus.
+#
+# Ouvrez ce fichier dans IntelliJ / WebStorm (client HTTP intégré) ou lancez-le
+# avec httpyac. Exécutez les requêtes dans l'ordre (« Run all requests in file »).
+
+### Remise à zéro de la table des jetons
+POST {{baseUrl}}/debug/reset
+
+### Le client forge une preuve de connexion (clé "client")
+POST {{baseUrl}}/debug/proof
+Content-Type: application/json
+
+{ "key": "client", "htm": "POST", "htu": "{{baseUrl}}/login/connection" }
+
+> {% client.global.set("connectProof", response.body.proof); %}
+
+### Connexion — le jeton est lié à la clé "client"
+POST {{baseUrl}}/login/connection
+Content-Type: application/json
+DPoP: {{connectProof}}
+
+{ "uid": "alice" }
+
+> {%
+    client.global.set("stolenRefresh", response.body.refreshToken);
+    client.test("connexion réussie", function () {
+        client.assert(response.body.status === "AUTHENTICATED", "connexion attendue");
+    });
+%}
+
+### L'attaquant forge une preuve valide… avec SA propre clé
+POST {{baseUrl}}/debug/proof
+Content-Type: application/json
+
+{ "key": "attacker", "htm": "POST", "htu": "{{baseUrl}}/login/refresh" }
+
+> {% client.global.set("attackerProof", response.body.proof); %}
+
+### Refresh volé + clé de l'attaquant -> DOIT être rejeté (jkt mismatch)
+POST {{baseUrl}}/login/refresh
+DPoP: {{attackerProof}}
+X-Refresh-Token: {{stolenRefresh}}
+
+> {%
+    client.test("attaque bloquée", function () {
+        client.assert(response.body.status === "NONE", "le refresh volé aurait dû être rejeté");
+    });
+%}

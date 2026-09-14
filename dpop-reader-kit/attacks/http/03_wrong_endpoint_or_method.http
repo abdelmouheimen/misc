@@ -1,0 +1,60 @@
+# Scénario 3 — Une preuve valide, mais destinée à une autre requête.
+# htu et htm lient la preuve à UNE méthode et UNE URL.
+
+### Remise à zéro
+POST {{baseUrl}}/debug/reset
+
+### Connexion préalable
+POST {{baseUrl}}/debug/proof
+Content-Type: application/json
+
+{ "key": "client", "htu": "{{baseUrl}}/login/connection" }
+
+> {% client.global.set("connectProof", response.body.proof); %}
+
+###
+POST {{baseUrl}}/login/connection
+Content-Type: application/json
+DPoP: {{connectProof}}
+
+{ "uid": "alice" }
+
+> {% client.global.set("refresh", response.body.refreshToken); %}
+
+### Preuve signée pour /login/connection (mauvais htu pour un refresh)
+POST {{baseUrl}}/debug/proof
+Content-Type: application/json
+
+{ "key": "client", "htu": "{{baseUrl}}/login/connection" }
+
+> {% client.global.set("wrongHtu", response.body.proof); %}
+
+### Présentée sur /login/refresh -> rejet (htu)
+POST {{baseUrl}}/login/refresh
+DPoP: {{wrongHtu}}
+X-Refresh-Token: {{refresh}}
+
+> {%
+    client.test("htu mismatch bloqué", function () {
+        client.assert(response.body.status === "NONE", "htu incorrect aurait dû être rejeté");
+    });
+%}
+
+### Preuve signée pour GET (mauvaise méthode)
+POST {{baseUrl}}/debug/proof
+Content-Type: application/json
+
+{ "key": "client", "htm": "GET", "htu": "{{baseUrl}}/login/refresh" }
+
+> {% client.global.set("wrongHtm", response.body.proof); %}
+
+### Présentée sur POST -> rejet (htm)
+POST {{baseUrl}}/login/refresh
+DPoP: {{wrongHtm}}
+X-Refresh-Token: {{refresh}}
+
+> {%
+    client.test("htm mismatch bloqué", function () {
+        client.assert(response.body.status === "NONE", "htm incorrect aurait dû être rejeté");
+    });
+%}

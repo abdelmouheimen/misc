@@ -1,0 +1,43 @@
+# Scénario 7 — Les limites, démontrées plutôt qu'affirmées.
+# DPoP ne protège PAS d'un code exécuté DANS la page légitime : la clé y est présente
+# et signe des preuves parfaitement valides. Cette « attaque » RÉUSSIT, et c'est attendu.
+
+### Remise à zéro
+POST {{baseUrl}}/debug/reset
+
+### Connexion
+POST {{baseUrl}}/debug/proof
+Content-Type: application/json
+
+{ "key": "client", "htu": "{{baseUrl}}/login/connection" }
+
+> {% client.global.set("connectProof", response.body.proof); %}
+
+###
+POST {{baseUrl}}/login/connection
+Content-Type: application/json
+DPoP: {{connectProof}}
+
+{ "uid": "alice" }
+
+> {% client.global.set("refresh", response.body.refreshToken); %}
+
+### Le code injecté signe avec la clé LÉGITIME (celle de la page)
+POST {{baseUrl}}/debug/proof
+Content-Type: application/json
+
+{ "key": "client", "htu": "{{baseUrl}}/login/refresh" }
+
+> {% client.global.set("p", response.body.proof); %}
+
+### -> l'attaque réussit (session riding). Voir la partie « Limites » de l'article.
+POST {{baseUrl}}/login/refresh
+DPoP: {{p}}
+X-Refresh-Token: {{refresh}}
+
+> {%
+    client.test("l'attaque réussit — limite ASSUMÉE de DPoP", function () {
+        client.assert(response.body.status === "AUTHENTICATED",
+            "depuis la page légitime, DPoP ne bloque pas");
+    });
+%}
