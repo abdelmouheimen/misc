@@ -1,0 +1,19 @@
+:root { color-scheme: light dark; }
+* { box-sizing: border-box; }
+body { margin: 0; font: 15px/1.55 system-ui, sans-serif; }
+main { max-width: 780px; margin: 2rem auto; padding: 0 1rem; }
+h1 { font-size: 1.4rem; }
+.jkt code { background: #00000012; padding: .1em .35em; border-radius: 4px; word-break: break-all; }
+.row { display: flex; flex-wrap: wrap; gap: .5rem; margin: 1rem 0; }
+button {
+  font: inherit; padding: .5rem .9rem; cursor: pointer;
+  border: 1px solid transparent; border-radius: 6px; background: #2e75b6; color: #fff;
+}
+button.ghost { background: transparent; color: inherit; border-color: #8888; }
+button:disabled { opacity: .5; cursor: not-allowed; }
+.log { list-style: none; padding: 0; margin: 1rem 0; }
+.log li { border-left: 4px solid #8888; padding: .1rem .8rem; margin: .4rem 0; }
+.log li.ok { border-color: #2e7d32; }
+.log li.ko { border-color: #b3261e; }
+.log li.info { border-color: #2e75b6; }
+.log pre { margin: .3rem 0; white-space: pre-wrap; word-break: break-word; font: inherit; }
