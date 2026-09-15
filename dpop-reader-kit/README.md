@@ -162,7 +162,15 @@ valide : ni l'un ni l'autre ne disent **qui** le présente. C'est ce qu'ajoute D
 
 - `/.well-known/jwks.json` expose la clé publique de **signature** (la clé de chiffrement
   reste privée au serveur, qui est à la fois émetteur et destinataire des jetons) ;
-- `/debug/introspect` (lab uniquement) montre ce que seul le serveur voit après déchiffrement.
+- `/debug/introspect` (lab uniquement) montre ce que seul le serveur voit après déchiffrement :
+  la SPA et les scripts d'attaque s'en servent pour afficher les claims et le `jti`, qu'ils ne
+  peuvent plus lire eux-mêmes.
+
+> ⚠️ **`/debug/introspect` est un oracle de déchiffrement.** Quiconque détient un jeton peut
+> l'envoyer à cet endpoint et lire ses claims : il **annule la confidentialité** apportée par
+> le chiffrement. Il n'existe que pour rendre le lab observable, comme `/debug/tokens`.
+> Une vraie application ne doit **jamais** exposer un tel endpoint ; si une introspection est
+> nécessaire (RFC 7662), elle est réservée aux serveurs de ressources authentifiés.
 
 La table des jetons (indexée par `jti`) reste nécessaire pour ce qu'un JWT seul ne permet
 pas : révocation, rotation et détection de réutilisation.
