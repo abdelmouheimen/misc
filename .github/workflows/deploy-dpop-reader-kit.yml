@@ -1,0 +1,80 @@
+name: Deploy dpop-reader-kit to VPS
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'dpop-reader-kit/**'
+      - '.github/workflows/deploy-dpop-reader-kit.yml'
+  workflow_dispatch: {}
+
+# Never run two deploys at the same time
+concurrency:
+  group: deploy-dpop-reader-kit
+  cancel-in-progress: false
+
+env:
+  APP_DIR: /opt/dpop-reader-kit
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Load SSH key
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.VPS_SSH_KEY }}
+
+      - name: Trust VPS host key
+        run: |
+          mkdir -p ~/.ssh
+          ssh-keyscan -H "${{ secrets.VPS_HOST }}" >> ~/.ssh/known_hosts
+
+      - name: Sync source to VPS
+        run: |
+          rsync -az --delete \
+            --rsync-path="mkdir -p ${APP_DIR} && rsync" \
+            --exclude='.git' \
+            --exclude='.env' \
+            --exclude='target' \
+            --exclude='node_modules' \
+            --exclude='dist' \
+            --exclude='docker-compose.vps.yml' \
+            ./dpop-reader-kit/ "${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:${APP_DIR}/"
+
+      # The lab is intentionally insecure (unauthenticated /debug endpoints) and Web Crypto
+      # only works on HTTPS or localhost: publish ports on the VPS loopback only and reach
+      # the lab through an SSH tunnel (ssh -L 5173:localhost:5173 -L 8099:localhost:8099).
+      - name: Write VPS compose override (loopback only)
+        run: |
+          ssh "${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}" "cat > ${APP_DIR}/docker-compose.vps.yml" <<'EOF'
+          services:
+            backend:
+              ports: !override
+                - "127.0.0.1:8099:8099"
+            frontend:
+              ports: !override
+                - "127.0.0.1:5173:80"
+          EOF
+
+      - name: Build & (re)start containers
+        run: |
+          ssh "${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}" \
+            "cd ${APP_DIR} && docker compose -f docker-compose.yml -f docker-compose.vps.yml up -d --build --remove-orphans && docker image prune -f"
+
+      - name: Health check
+        run: |
+          ssh "${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}" \
+            "for i in \$(seq 1 30); do \
+               if curl -fsS http://localhost:8099/debug/tokens >/dev/null 2>&1 \
+                  && curl -fsS http://localhost:5173/ >/dev/null 2>&1; then \
+                 echo 'Lab is healthy'; exit 0; \
+               fi; \
+               echo \"waiting for lab... (\$i/30)\"; sleep 5; \
+             done; \
+             echo 'Lab did not become healthy in time'; \
+             docker compose -f ${APP_DIR}/docker-compose.yml -f ${APP_DIR}/docker-compose.vps.yml logs --tail=50; \
+             exit 1"
