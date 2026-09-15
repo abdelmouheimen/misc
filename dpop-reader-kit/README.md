@@ -12,8 +12,8 @@ un générateur de preuves DPoP (Python) et une série de scénarios d'attaque r
 
 ## Prérequis
 
-- **JDK 21** et **Maven** (ou **Docker**, au choix) pour le backend
-- **Node 18+** pour la SPA React
+- **JDK 25** et **Maven** (ou **Docker**, au choix) pour le backend
+- **Node 22.12+** (24 LTS recommandé) pour la SPA React
 - **Python 3.9+** avec `cryptography` (`pip install cryptography`) pour le générateur et les attaques
 - `bash` et `curl` pour les scripts d'attaque (Git Bash sous Windows)
 
