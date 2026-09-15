@@ -9,6 +9,9 @@ spring:
 # Passez à false pour observer le comportement "bearer" classique (voir README).
 dpop:
   required: true
+  # URL publique du backend telle que le client la signe dans htu (derrière un reverse proxy :
+  # l'URL externe). Le claim htu est comparé à cette URL + le chemin de la requête.
+  public-base-url: http://localhost:8099
 
 # Jetons émis : JWT ES256 signés par le serveur, liés à la clé du client par cnf.jkt.
 jwt:

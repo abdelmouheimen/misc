@@ -49,9 +49,10 @@ fresh_login() {
   echo "$resp" | json_field refreshToken
 }
 
-# post_refresh <proof> <refresh_token> : tente un refresh, renvoie le corps JSON
+# post_refresh <proof> <refresh_token> : tente un refresh, renvoie le corps JSON.
+# Le jeton est présenté comme un attaquant rejouerait un cookie volé : dans l'en-tête Cookie.
 post_refresh() {
-  curl -s -X POST "$BASE_URL/login/refresh" -H "DPoP: $1" -H "X-Refresh-Token: $2"
+  curl -s -X POST "$BASE_URL/login/refresh" -H "DPoP: $1" -H "Cookie: refresh_token=$2"
 }
 
 # expect_rejected <json> : affiche le verdict attendu (l'attaque doit échouer)

@@ -16,6 +16,16 @@ l'endpoint attaqué. Tout se chaîne dans le fichier, sans script externe.
 > (le client détient la clé). C'est un raccourci pédagogique réservé à ce lab. La vraie
 > signature côté client est dans la SPA React (`frontend/src/dpopService.ts`).
 
+## Pourquoi l'en-tête `X-Refresh-Token` ?
+
+Le client HTTP de l'IDE gère ses propres cookies : il renverrait automatiquement le refresh
+token de la dernière réponse et masquerait le jeton « volé » que le scénario veut présenter.
+Ces fichiers passent donc le refresh token dans l'en-tête `X-Refresh-Token`, que le backend du
+lab accepte **uniquement pour cette raison**.
+
+> Les scripts shell (`attacks/*.sh`), eux, rejouent le jeton volé dans l'en-tête `Cookie`, comme
+> le ferait un attaquant. En production, le refresh token ne transite que par le cookie `HttpOnly`.
+
 ## Prérequis
 
 - Backend démarré (`docker compose up` ou `mvn spring-boot:run`).

@@ -6,6 +6,7 @@ import com.nimbusds.jose.crypto.ECDSAVerifier
 import com.nimbusds.jose.jwk.ECKey
 import com.nimbusds.jwt.SignedJWT
 import org.slf4j.LoggerFactory
+import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Service
 import java.net.URI
 import java.time.Instant
@@ -32,21 +33,30 @@ sealed class DpopResult {
  * (voir la remarque sur le multi-instance dans le README).
  */
 @Service
-class DpopProofValidator {
+class DpopProofValidator(
+    // URL publique du backend, telle que le CLIENT la voit et la signe dans htu.
+    // Derrière un reverse proxy, c'est l'URL externe (https://api.example.com), pas celle
+    // que reçoit le backend (http://backend:8099).
+    @Value("\${dpop.public-base-url:http://localhost:8099}") publicBaseUrl: String,
+) {
 
     private val log = LoggerFactory.getLogger(javaClass)
+    private val publicBase = publicBaseUrl.trimEnd('/')
 
     // Anti-rejeu : jti déjà vu -> instant de première utilisation. Purgé à chaque appel.
     private val usedJtis = ConcurrentHashMap<String, Instant>()
 
-    fun validate(dpopHeader: String, httpMethod: String, requestUrl: String): DpopResult =
-        runCatching { doValidate(dpopHeader, httpMethod, requestUrl) }
+    /**
+     * @param requestPath chemin de la requête reçue (`HttpServletRequest.requestURI`, sans query).
+     */
+    fun validate(dpopHeader: String, httpMethod: String, requestPath: String): DpopResult =
+        runCatching { doValidate(dpopHeader, httpMethod, requestPath) }
             .getOrElse { e ->
                 log.debug("DPoP proof malformed: {}", e.message)
                 DpopResult.Invalid("Malformed DPoP proof: ${e.message}")
             }
 
-    private fun doValidate(dpopHeader: String, httpMethod: String, requestUrl: String): DpopResult {
+    private fun doValidate(dpopHeader: String, httpMethod: String, requestPath: String): DpopResult {
         val jwt = SignedJWT.parse(dpopHeader)
         val header = jwt.header
 
@@ -76,12 +86,16 @@ class DpopProofValidator {
             return DpopResult.Invalid("htm mismatch: expected $httpMethod, got $htm")
         }
 
-        // 5. Liaison à la requête : URL (on compare le chemin, cf. reverse proxy dans le README).
+        // 5. Liaison à la requête : URI complète (RFC 9449 §4.3) — schéma, hôte, port et chemin,
+        //    hors query et fragment. L'URI attendue est reconstruite à partir de l'URL PUBLIQUE
+        //    configurée, jamais à partir de l'URL vue derrière le proxy ni des en-têtes
+        //    Host / X-Forwarded-Host fournis par le client.
         val htu = claims.getStringClaim("htu") ?: return DpopResult.Invalid("Missing htu claim")
-        val htuPath = runCatching { URI(htu).path }.getOrNull() ?: htu
-        val requestPath = runCatching { URI(requestUrl).path }.getOrNull() ?: requestUrl
-        if (requestPath != htuPath) {
-            return DpopResult.Invalid("htu mismatch: expected path $requestPath, got $htuPath")
+        val signed = runCatching { URI(htu).normalize() }.getOrNull()
+            ?: return DpopResult.Invalid("Malformed htu: $htu")
+        val expected = URI(publicBase + requestPath).normalize()
+        if (!sameHttpUri(signed, expected)) {
+            return DpopResult.Invalid("htu mismatch: expected $expected, got $htu")
         }
 
         // 6. Fraîcheur : iat dans une fenêtre étroite.
@@ -100,6 +114,26 @@ class DpopProofValidator {
 
         // Succès : l'empreinte de la clé (jkt) servira à lier le jeton.
         return DpopResult.Valid(ecKey.computeThumbprint().toString())
+    }
+
+    /**
+     * Comparaison d'URI HTTP après normalisation (RFC 3986 §6.2.2-6.2.3) : schéma et hôte
+     * insensibles à la casse, port par défaut explicité, chemin identique. Query et fragment
+     * sont ignorés, comme le prévoit la RFC 9449.
+     */
+    private fun sameHttpUri(a: URI, b: URI): Boolean {
+        if (a.scheme == null || a.host == null || b.scheme == null || b.host == null) return false
+        return a.scheme.equals(b.scheme, ignoreCase = true) &&
+            a.host.equals(b.host, ignoreCase = true) &&
+            effectivePort(a) == effectivePort(b) &&
+            (a.rawPath ?: "").ifEmpty { "/" } == (b.rawPath ?: "").ifEmpty { "/" }
+    }
+
+    private fun effectivePort(uri: URI): Int = when {
+        uri.port != -1 -> uri.port
+        uri.scheme.equals("https", ignoreCase = true) -> 443
+        uri.scheme.equals("http", ignoreCase = true) -> 80
+        else -> -1
     }
 
     private fun purgeExpiredJtis() {

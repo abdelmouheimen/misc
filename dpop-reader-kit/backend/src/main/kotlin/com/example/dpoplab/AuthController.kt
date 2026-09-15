@@ -56,9 +56,10 @@ class AuthController(
     fun refresh(request: HttpServletRequest, response: HttpServletResponse): ConnectionResponse {
         val jkt = resolveJkt(request) ?: return ConnectionResponse("NONE", "DPoP missing or invalid")
 
-        // Le refresh arrive par cookie (navigateur réel) ou par en-tête (scripts d'attaque,
-        // fichiers .http). L'en-tête prime lorsqu'il est présent : c'est le moyen d'injecter
-        // un jeton "volé" sans être masqué par le cookie de session du client HTTP.
+        // Le refresh token arrive normalement par le cookie HttpOnly (navigateur, scripts d'attaque
+        // qui rejouent un cookie volé). L'en-tête X-Refresh-Token n'existe QUE pour le lab : il
+        // permet aux fichiers .http d'injecter un jeton "volé" sans être masqués par le cookie jar
+        // du client HTTP de l'IDE. En production, le refresh token ne transite que par le cookie.
         val refreshToken = request.getHeader("X-Refresh-Token")
             ?: request.cookies?.firstOrNull { it.name == "refresh_token" }?.value
 
@@ -100,7 +101,9 @@ class AuthController(
     private fun resolveJkt(request: HttpServletRequest): String? {
         val header = request.getHeader("DPoP")
         if (header == null) return if (dpopRequired) null else ""
-        return when (val r = dpopValidator.validate(header, request.method, request.requestURL.toString())) {
+        // Seul le chemin de la requête est pris ici : le validateur le combine à l'URL publique
+        // configurée (dpop.public-base-url) pour comparer l'URI complète au claim htu.
+        return when (val r = dpopValidator.validate(header, request.method, request.requestURI)) {
             is DpopResult.Valid -> r.jkt
             is DpopResult.Invalid -> {
                 log.warn("DPoP invalid: {}", r.reason)

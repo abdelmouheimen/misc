@@ -15,6 +15,9 @@ Volontairement, pour rester lisible :
   des JWT (JWE). Il sert uniquement à rendre le lab observable ;
 - **un endpoint `/debug/proof`** fait signer des preuves DPoP par le serveur (pour les fichiers
   `.http`), ce qui contredit le principe même de DPoP — c'est un raccourci pédagogique ;
+- **le refresh token est aussi accepté dans un en-tête `X-Refresh-Token`**, uniquement pour
+  rendre les fichiers `.http` reproductibles ; en production, il ne transite que par le
+  cookie `HttpOnly` ;
 - **le store est en mémoire**, non partagé entre instances ;
 - **les cookies ne sont pas `Secure`** (le lab tourne en HTTP sur `localhost`).
 

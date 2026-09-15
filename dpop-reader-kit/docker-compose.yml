@@ -17,6 +17,8 @@ services:
       DPOP_REQUIRED: "true"
       # Origine autorisée par le CORS (doit correspondre au port publié de la SPA).
       CORS_ALLOWED_ORIGIN: "http://localhost:5173"
+      # URL publique du backend, utilisée pour valider le claim htu des preuves DPoP.
+      DPOP_PUBLIC_BASE_URL: "http://localhost:8099"
 
   frontend:
     build: ./frontend

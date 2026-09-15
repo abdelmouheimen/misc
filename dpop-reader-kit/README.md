@@ -45,12 +45,24 @@ cd frontend && npm install && npm run dev
 > quel que soit le mode de lancement du backend.
 
 Dans la SPA : **Se connecter** signe une preuve DPoP et ouvre une session ; **Renouveler**
-déclenche une rotation ; **Tenter d'exporter la clé** démontre que la clé privée est
-inaccessible à JavaScript ; **Table des jetons** affiche l'état côté serveur.
+déclenche une rotation ; **Tenter d'exporter la clé** démontre que la valeur de la clé privée
+ne peut pas être extraite (la `CryptoKey` peut en revanche toujours signer — c'est le sujet du
+scénario 7) ; **Table des jetons** affiche l'état côté serveur.
 
 La SPA (`http://localhost:5173`) et le backend (`http://localhost:8099`) sont sur deux origines
 distinctes : le backend expose donc du **CORS** autorisant l'en-tête `DPoP` et les credentials
 (voir `backend/…/CorsConfig.kt`) — un point facile à oublier lorsqu'on ajoute DPoP.
+
+### `htu` et reverse proxy
+
+Le claim `htu` d'une preuve est comparé à l'**URI complète** de la requête (schéma, hôte, port
+et chemin, hors query et fragment — RFC 9449 §4.3). Cette URI est reconstruite à partir de
+l'URL publique configurée (`dpop.public-base-url`, variable `DPOP_PUBLIC_BASE_URL`) et du chemin
+reçu, et **non** à partir de l'URL vue par le backend : derrière un reverse proxy, celui-ci
+reçoit `http://backend:8099/login/refresh` alors que le navigateur a signé
+`https://api.example.com/login/refresh`. Comparer le seul chemin pour contourner ce problème
+accepterait une preuve destinée à un autre serveur. Si vous exposez le backend sous une autre
+adresse, mettez cette variable à jour.
 
 ### Rejouer les attaques
 
@@ -127,7 +139,10 @@ de l'article. DPoP lie le jeton à une clé, pas à une intention.
   L'endpoint `/debug/tokens` remplace l'inspection de la table `authentication_token`.
 - **Clés de signature et de chiffrement générées au démarrage** : les jetons émis avant un
   redémarrage deviennent invalides. En production, elles sont persistées (KMS/HSM) et tournées.
-- **Comparaison de `htu` sur le chemin** : voir la remarque « reverse proxy » de l'article.
+- **Refresh token accepté aussi dans l'en-tête `X-Refresh-Token`** : uniquement pour que les
+  fichiers `.http` restent reproductibles (le client HTTP de l'IDE gère ses propres cookies).
+  Les scripts shell rejouent le jeton volé dans l'en-tête `Cookie`, comme le ferait un
+  attaquant ; en production, le refresh token ne transite que par le cookie `HttpOnly`.
 - **Anti-rejeu `jti` en mémoire** : suffisant en mono-instance ; en cluster, un store partagé
   (Redis) est nécessaire.
 

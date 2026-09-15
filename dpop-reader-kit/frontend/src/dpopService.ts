@@ -1,8 +1,8 @@
 // Service DPoP côté navigateur (RFC 9449).
 //
 // La paire de clés vit uniquement en mémoire et la clé privée est NON EXPORTABLE :
-// JavaScript ne peut jamais lire sa valeur, seulement demander une signature.
-// C'est ce qui rend une preuve infalsifiable même en cas de XSS passif.
+// sa valeur privée ne peut pas être extraite, mais la CryptoKey peut être utilisée pour
+// signer — y compris par un script injecté dans la page (voir attacks/07).
 
 let keyPair: CryptoKeyPair | null = null;
 let publicJwk: JsonWebKey | null = null;
@@ -11,7 +11,7 @@ let publicJwk: JsonWebKey | null = null;
 export async function initializeDPopKeyPair(): Promise<void> {
   keyPair = await crypto.subtle.generateKey(
     { name: 'ECDSA', namedCurve: 'P-256' },
-    false, // extractable:false -> clé privée inaccessible à JS
+    false, // extractable:false -> valeur privée non extractible (la clé peut toujours signer)
     ['sign'],
   );
   publicJwk = await crypto.subtle.exportKey('jwk', keyPair.publicKey);
@@ -57,7 +57,7 @@ export async function tryExportPrivateKey(): Promise<string> {
     await crypto.subtle.exportKey('jwk', keyPair.privateKey);
     return 'INATTENDU : la clé privée a été exportée';
   } catch (e) {
-    return `Export refusé (${(e as Error).name}) — la clé privée reste inaccessible à JS`;
+    return `Export refusé (${(e as Error).name}) — la valeur privée ne peut pas être extraite, mais la CryptoKey peut toujours signer`;
   }
 }
 

@@ -79,6 +79,7 @@ jobs:
               ports: !reset []
               environment:
                 CORS_ALLOWED_ORIGIN: "https://${PUBLIC_HOST}"
+                DPOP_PUBLIC_BASE_URL: "https://${PUBLIC_HOST}"
             frontend:
               ports: !reset []
             caddy:
