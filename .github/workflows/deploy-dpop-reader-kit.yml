@@ -41,40 +41,80 @@ jobs:
             --exclude='node_modules' \
             --exclude='dist' \
             --exclude='docker-compose.vps.yml' \
+            --exclude='/Caddyfile' \
+            --exclude='frontend/.env.production' \
             ./dpop-reader-kit/ "${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:${APP_DIR}/"
 
-      # Public HTTP exposure on the VPS IP (test server only: the /debug endpoints are public).
-      # Browsers only expose Web Crypto on HTTPS or localhost: to test DPoP over plain HTTP,
-      # enable chrome://flags/#unsafely-treat-insecure-origin-as-secure for http://<VPS_HOST>:5173.
-      - name: Configure public URLs (SPA backend URL, CORS origin, firewall)
+      # HTTPS (Web Crypto requires a secure context) on <ip-with-dashes>.sslip.io, a free DNS
+      # name resolving to the VPS IP. Caddy terminates TLS (automatic Let's Encrypt certificate)
+      # and serves the SPA and the API on a single origin; backend/frontend ports stay private.
+      - name: Compute public host
+        run: echo "PUBLIC_HOST=$(echo '${{ secrets.VPS_HOST }}' | tr . -).sslip.io" >> "$GITHUB_ENV"
+
+      - name: Configure HTTPS reverse proxy (Caddy, single origin, firewall)
         run: |
-          ssh "${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}" "cat > ${APP_DIR}/frontend/.env.production" <<'EOF'
-          VITE_BACKEND_URL=http://${{ secrets.VPS_HOST }}:8099
+          ssh "${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}" "cat > ${APP_DIR}/frontend/.env.production" <<EOF
+          VITE_BACKEND_URL=https://${PUBLIC_HOST}
           EOF
-          ssh "${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}" "cat > ${APP_DIR}/docker-compose.vps.yml" <<'EOF'
+          ssh "${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}" "cat > ${APP_DIR}/Caddyfile" <<EOF
+          ${PUBLIC_HOST} {
+              encode gzip
+              handle /login/* {
+                  reverse_proxy backend:8099
+              }
+              handle /debug/* {
+                  reverse_proxy backend:8099
+              }
+              handle {
+                  reverse_proxy frontend:80
+              }
+          }
+          EOF
+          ssh "${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}" "cat > ${APP_DIR}/docker-compose.vps.yml" <<EOF
           services:
             backend:
+              ports: !reset []
               environment:
-                CORS_ALLOWED_ORIGIN: "http://${{ secrets.VPS_HOST }}:5173"
+                CORS_ALLOWED_ORIGIN: "https://${PUBLIC_HOST}"
+            frontend:
+              ports: !reset []
+            caddy:
+              image: caddy:2-alpine
+              restart: unless-stopped
+              ports:
+                - "80:80"
+                - "443:443"
+                - "443:443/udp"
+              volumes:
+                - ./Caddyfile:/etc/caddy/Caddyfile:ro
+                - caddy_data:/data
+                - caddy_config:/config
+              depends_on:
+                - backend
+                - frontend
+          volumes:
+            caddy_data: {}
+            caddy_config: {}
           EOF
           ssh "${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}" \
-            "if command -v ufw >/dev/null; then ufw allow 5173/tcp >/dev/null; ufw allow 8099/tcp >/dev/null; fi"
+            "if command -v ufw >/dev/null; then ufw allow 80/tcp >/dev/null; ufw allow 443/tcp >/dev/null; ufw allow 443/udp >/dev/null; ufw delete allow 5173/tcp >/dev/null 2>&1; ufw delete allow 8099/tcp >/dev/null 2>&1; true; fi"
 
       - name: Build & (re)start containers
         run: |
           ssh "${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}" \
             "cd ${APP_DIR} && docker compose -f docker-compose.yml -f docker-compose.vps.yml up -d --build --remove-orphans && docker image prune -f"
 
+      # Checked from the GitHub runner, through Caddy, with a valid certificate.
       - name: Health check
         run: |
+          for i in $(seq 1 30); do
+            if curl -fsS "https://${PUBLIC_HOST}/debug/tokens" >/dev/null 2>&1 \
+               && curl -fsS "https://${PUBLIC_HOST}/" >/dev/null 2>&1; then
+              echo "Lab is healthy on https://${PUBLIC_HOST}"; exit 0
+            fi
+            echo "waiting for lab... ($i/30)"; sleep 5
+          done
+          echo "Lab did not become healthy in time"
           ssh "${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}" \
-            "for i in \$(seq 1 30); do \
-               if curl -fsS http://localhost:8099/debug/tokens >/dev/null 2>&1 \
-                  && curl -fsS http://localhost:5173/ >/dev/null 2>&1; then \
-                 echo 'Lab is healthy'; exit 0; \
-               fi; \
-               echo \"waiting for lab... (\$i/30)\"; sleep 5; \
-             done; \
-             echo 'Lab did not become healthy in time'; \
-             docker compose -f ${APP_DIR}/docker-compose.yml -f ${APP_DIR}/docker-compose.vps.yml logs --tail=50; \
-             exit 1"
+            "docker compose -f ${APP_DIR}/docker-compose.yml -f ${APP_DIR}/docker-compose.vps.yml logs --tail=50"
+          exit 1
