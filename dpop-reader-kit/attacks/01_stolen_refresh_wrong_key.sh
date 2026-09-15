@@ -11,7 +11,8 @@ note "jkt client    = $($GEN --key "$CLIENT_KEY" --print-jkt)"
 note "jkt attaquant = $($GEN --key "$ATTACKER_KEY" --print-jkt)"
 
 RT=$(fresh_login)
-note "refresh token (dérobé) = ${RT:0:8}…"
+note "refresh token (dérobé) = $(short_token "$RT")"
+note "claims du JWT volé    = $(jwt_claims "$RT")"
 
 echo "L'attaquant forge une preuve valide… avec SA propre clé :"
 PROOF=$($GEN --htu "$BASE_URL/login/refresh" --key "$ATTACKER_KEY")

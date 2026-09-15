@@ -10,6 +10,12 @@ spring:
 dpop:
   required: true
 
+# Jetons émis : JWT ES256 signés par le serveur, liés à la clé du client par cnf.jkt.
+jwt:
+  issuer: dpop-lab-backend
+  access-ttl-seconds: 300
+  refresh-ttl-seconds: 86400
+
 logging:
   level:
     com.example.dpoplab: INFO

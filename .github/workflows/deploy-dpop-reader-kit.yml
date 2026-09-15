@@ -65,6 +65,9 @@ jobs:
               handle /debug/* {
                   reverse_proxy backend:8099
               }
+              handle /.well-known/* {
+                  reverse_proxy backend:8099
+              }
               handle {
                   reverse_proxy frontend:80
               }

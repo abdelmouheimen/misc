@@ -75,8 +75,10 @@ et s'ouvrent directement dans le client HTTP d'IntelliJ. Voir leur README pour l
 |---|---|
 | `backend/` | Backend Spring Boot : validation DPoP, liaison et rotation des jetons |
 | `backend/…/DpopProofValidator.kt` | Les contrôles d'une preuve, dans l'ordre (le cœur du sujet) |
+| `backend/…/JwtService.kt` | Émission et vérification des JWT ES256, liaison `cnf.jkt` (RFC 9449 §6.1) |
 | `backend/…/TokenStore.kt` | Rotation du refresh token et détection de réutilisation |
 | `backend/…/AuthController.kt` | Endpoints `/login/connection`, `/login/refresh`, `/debug/tokens` |
+| `backend/…/JwksController.kt` | Clé publique de signature des jetons : `/.well-known/jwks.json` |
 | `backend/…/CorsConfig.kt` | CORS autorisant l'en-tête `DPoP` et les credentials |
 | `frontend/` | SPA React/TypeScript |
 | `frontend/src/dpopService.ts` | Génération de la clé non exportable et signature des preuves (côté navigateur) |
@@ -122,8 +124,27 @@ de l'article. DPoP lie le jeton à une clé, pas à une intention.
 
 - **Store en mémoire** au lieu de PostgreSQL : le sujet est DPoP, pas la persistance.
   L'endpoint `/debug/tokens` remplace l'inspection de la table `authentication_token`.
-- **Jetons opaques** (UUID) plutôt que des JWT signés : la liaison à la clé est identique,
-  le code reste focalisé.
+- **Clé de signature des JWT générée au démarrage** : les jetons émis avant un redémarrage
+  deviennent invalides. En production, elle est persistée (KMS/HSM) et tournée.
+
+## Les jetons émis
+
+Access et refresh token sont de **vrais JWT signés en ES256** par le serveur. La liaison à la
+clé du client est portée par le claim `cnf.jkt` (RFC 9449 §6.1) :
+
+```json
+{ "typ": "at+jwt", "alg": "ES256", "kid": "…" }
+{
+  "iss": "dpop-lab-backend", "sub": "alice", "jti": "…",
+  "iat": 1789389450, "exp": 1789389750,
+  "token_type": "access", "auth_time": 1789389450,
+  "cnf": { "jkt": "a4VmJvz0lfljPNV1H4rhchFnribeFrpGJR_wXgJ4o-s" }
+}
+```
+
+La clé publique est exposée sur `/.well-known/jwks.json`. La table des jetons (indexée par
+`jti`) reste nécessaire pour ce qu'un JWT seul ne permet pas : révocation, rotation et
+détection de réutilisation.
 - **Comparaison de `htu` sur le chemin** : voir la remarque « reverse proxy » de l'article.
 - **Anti-rejeu `jti` en mémoire** : suffisant en mono-instance ; en cluster, un store partagé
   (Redis) est nécessaire.

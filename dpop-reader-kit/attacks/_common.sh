@@ -16,6 +16,16 @@ note()  { echo "${C_DIM}$*${C_R}"; }
 # json_field <clé> : lit un champ de la réponse JSON reçue sur stdin
 json_field() { python3 -c "import sys,json;print(json.load(sys.stdin).get('$1',''))"; }
 
+# jwt_claims <jwt> : décode (sans vérifier) la charge utile d'un JWT, pour l'affichage
+jwt_claims() {
+  python3 -c "import sys,json,base64;p=sys.argv[1].split('.')[1];print(json.dumps(json.loads(base64.urlsafe_b64decode(p+'='*(-len(p)%4)))))" "$1"
+}
+
+# short_token <jwt> : identifiant lisible d'un jeton (début de son jti)
+short_token() {
+  python3 -c "import sys,json,base64;p=sys.argv[1].split('.')[1];print('jti='+json.loads(base64.urlsafe_b64decode(p+'='*(-len(p)%4)))['jti'][:8])" "$1"
+}
+
 # reset_backend : vide la table des jetons du lab
 reset_backend() { curl -s -X POST "$BASE_URL/debug/reset" >/dev/null; }
 

@@ -4,6 +4,18 @@ import { connect, refresh, fetchTokens, reset, type AuthResponse } from './api';
 
 interface LogEntry { id: number; text: string; kind: 'ok' | 'ko' | 'info'; }
 
+/** Décode (sans vérifier) l'en-tête et la charge utile d'un JWT, pour l'affichage. */
+function decodeJwt(token: string): { header: unknown; payload: Record<string, unknown> } | null {
+  const part = (s: string) =>
+    JSON.parse(atob(s.replace(/-/g, '+').replace(/_/g, '/').padEnd(Math.ceil(s.length / 4) * 4, '=')));
+  try {
+    const [header, payload] = token.split('.');
+    return { header: part(header), payload: part(payload) };
+  } catch {
+    return null;
+  }
+}
+
 export function App() {
   const [ready, setReady] = useState(false);
   const [jkt, setJkt] = useState('—');
@@ -28,6 +40,19 @@ export function App() {
   function report(label: string, r: AuthResponse) {
     const kind = r.status === 'AUTHENTICATED' ? 'ok' : 'ko';
     push(`${label} → ${r.status}${r.reason ? ` (${r.reason})` : ''}`, kind);
+
+    // L'access token est un JWT : on montre son contenu et on vérifie sa liaison à la clé.
+    const at = r.accessToken ? decodeJwt(r.accessToken) : null;
+    if (at) {
+      const cnfJkt = (at.payload.cnf as { jkt?: string } | undefined)?.jkt;
+      const binding = cnfJkt === jkt
+        ? '✓ cnf.jkt = jkt de la clé de ce navigateur'
+        : `✗ cnf.jkt (${cnfJkt}) ≠ jkt local`;
+      push(
+        `Access token (JWT décodé)\n${JSON.stringify(at.header, null, 2)}\n${JSON.stringify(at.payload, null, 2)}\n${binding}`,
+        'info',
+      );
+    }
   }
 
   return (

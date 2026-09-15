@@ -78,10 +78,11 @@ class AuthController(
     fun debugTokens(): List<Map<String, Any?>> = tokenStore.snapshot().map {
         mapOf(
             "type" to it.type,
-            "token" to it.token.take(8) + "...",
+            "jti" to it.jti,
             "userId" to it.userId,
             "dpopJkt" to it.dpopJkt,
             "sessionCreatedAt" to it.sessionCreatedAt.toString(),
+            "expiresAt" to it.expiresAt.toString(),
             "revoked" to it.revoked,
         )
     }

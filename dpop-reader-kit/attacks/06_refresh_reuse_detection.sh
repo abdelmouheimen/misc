@@ -8,13 +8,13 @@ reset_backend
 
 title "6. Détection de réutilisation d'un refresh token"
 RT_OLD=$(fresh_login)
-note "refresh initial = ${RT_OLD:0:8}…"
+note "refresh initial = $(short_token "$RT_OLD")"
 
 echo "Rotation légitime (le client renouvelle avec sa clé) :"
 PROOF=$($GEN --htu "$BASE_URL/login/refresh" --key "$CLIENT_KEY")
 RESP=$(post_refresh "$PROOF" "$RT_OLD")
 RT_NEW=$(echo "$RESP" | json_field refreshToken)
-expect_success "$RESP"; note "nouveau refresh = ${RT_NEW:0:8}…, l'ancien est désormais révoqué."
+expect_success "$RESP"; note "nouveau refresh = $(short_token "$RT_NEW"), l'ancien est désormais révoqué."
 
 echo
 echo "Un attaquant rejoue l'ANCIEN refresh (avec une preuve valide) :"
