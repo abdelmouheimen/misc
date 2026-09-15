@@ -16,15 +16,26 @@ note()  { echo "${C_DIM}$*${C_R}"; }
 # json_field <clé> : lit un champ de la réponse JSON reçue sur stdin
 json_field() { python3 -c "import sys,json;print(json.load(sys.stdin).get('$1',''))"; }
 
-# jwt_claims <jwt> : décode (sans vérifier) la charge utile d'un JWT, pour l'affichage
+# Les jetons sont des JWT signés puis chiffrés (JWE) : impossible de lire leurs claims
+# côté client. Seul le serveur les déchiffre, via l'endpoint de lab /debug/introspect.
+
+# introspect <jwt> : en-têtes JWE/JWS et claims déchiffrés par le serveur (JSON)
+introspect() {
+  curl -s -X POST "$BASE_URL/debug/introspect" -H "Content-Type: application/json" -d "{\"token\":\"$1\"}"
+}
+
+# jwt_claims <jwt> : claims du jeton, déchiffrés par le serveur
 jwt_claims() {
-  python3 -c "import sys,json,base64;p=sys.argv[1].split('.')[1];print(json.dumps(json.loads(base64.urlsafe_b64decode(p+'='*(-len(p)%4)))))" "$1"
+  introspect "$1" | python3 -c "import sys,json;print(json.dumps(json.load(sys.stdin).get('claims')))"
 }
 
 # short_token <jwt> : identifiant lisible d'un jeton (début de son jti)
 short_token() {
-  python3 -c "import sys,json,base64;p=sys.argv[1].split('.')[1];print('jti='+json.loads(base64.urlsafe_b64decode(p+'='*(-len(p)%4)))['jti'][:8])" "$1"
+  introspect "$1" | python3 -c "import sys,json;print('jti='+((json.load(sys.stdin).get('claims') or {}).get('jti') or '?')[:8])"
 }
+
+# jwe_parts <jwt> : nombre de parties du jeton (5 pour un JWE, 3 pour un JWS)
+jwe_parts() { echo "$1" | awk -F. '{print NF}'; }
 
 # reset_backend : vide la table des jetons du lab
 reset_backend() { curl -s -X POST "$BASE_URL/debug/reset" >/dev/null; }

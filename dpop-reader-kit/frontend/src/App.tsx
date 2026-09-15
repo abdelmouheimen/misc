@@ -1,16 +1,14 @@
 import { useEffect, useState } from 'react';
 import { initializeDPopKeyPair, computeJkt, tryExportPrivateKey } from './dpopService';
-import { connect, refresh, fetchTokens, reset, type AuthResponse } from './api';
+import { connect, refresh, fetchTokens, reset, introspect, type AuthResponse } from './api';
 
 interface LogEntry { id: number; text: string; kind: 'ok' | 'ko' | 'info'; }
 
-/** Décode (sans vérifier) l'en-tête et la charge utile d'un JWT, pour l'affichage. */
-function decodeJwt(token: string): { header: unknown; payload: Record<string, unknown> } | null {
-  const part = (s: string) =>
-    JSON.parse(atob(s.replace(/-/g, '+').replace(/_/g, '/').padEnd(Math.ceil(s.length / 4) * 4, '=')));
+/** En-tête d'un JWE : la seule partie lisible côté client (le reste est chiffré). */
+function jweHeader(token: string): Record<string, unknown> | null {
   try {
-    const [header, payload] = token.split('.');
-    return { header: part(header), payload: part(payload) };
+    const h = token.split('.')[0];
+    return JSON.parse(atob(h.replace(/-/g, '+').replace(/_/g, '/').padEnd(Math.ceil(h.length / 4) * 4, '=')));
   } catch {
     return null;
   }
@@ -37,22 +35,24 @@ export function App() {
     setLog((prev) => [{ id: counter++ + Date.now(), text, kind }, ...prev]);
   }
 
-  function report(label: string, r: AuthResponse) {
+  async function report(label: string, r: AuthResponse) {
     const kind = r.status === 'AUTHENTICATED' ? 'ok' : 'ko';
     push(`${label} → ${r.status}${r.reason ? ` (${r.reason})` : ''}`, kind);
+    if (!r.accessToken) return;
 
-    // L'access token est un JWT : on montre son contenu et on vérifie sa liaison à la clé.
-    const at = r.accessToken ? decodeJwt(r.accessToken) : null;
-    if (at) {
-      const cnfJkt = (at.payload.cnf as { jkt?: string } | undefined)?.jkt;
-      const binding = cnfJkt === jkt
-        ? '✓ cnf.jkt = jkt de la clé de ce navigateur'
-        : `✗ cnf.jkt (${cnfJkt}) ≠ jkt local`;
-      push(
-        `Access token (JWT décodé)\n${JSON.stringify(at.header, null, 2)}\n${JSON.stringify(at.payload, null, 2)}\n${binding}`,
-        'info',
-      );
-    }
+    // L'access token est un JWT signé PUIS chiffré (JWE) : le navigateur n'en lit que l'en-tête.
+    const parts = r.accessToken.split('.').length;
+    const seen = await introspect(r.accessToken);
+    const cnfJkt = (seen.claims?.cnf as { jkt?: string } | undefined)?.jkt;
+    const binding = cnfJkt === jkt
+      ? '✓ cnf.jkt = jkt de la clé de ce navigateur'
+      : `✗ cnf.jkt (${cnfJkt}) ≠ jkt local`;
+    push(
+      `Access token : JWE à ${parts} parties (signé puis chiffré)\n` +
+        `En-tête JWE, seule partie lisible par le navigateur :\n${JSON.stringify(jweHeader(r.accessToken), null, 2)}\n` +
+        `Claims, déchiffrés par le serveur (/debug/introspect) :\n${JSON.stringify(seen.claims ?? seen, null, 2)}\n${binding}`,
+      'info',
+    );
   }
 
   return (

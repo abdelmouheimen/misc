@@ -31,6 +31,16 @@ async function postWithDPop(path: string, body?: unknown): Promise<AuthResponse>
 export const connect = (uid: string) => postWithDPop('/login/connection', { uid });
 export const refresh = () => postWithDPop('/login/refresh');
 
+/** Claims d'un jeton chiffré, déchiffrés par le serveur (endpoint de lab). */
+export async function introspect(token: string): Promise<{ claims?: Record<string, unknown>; error?: string }> {
+  const res = await fetch(`${BASE_URL}/debug/introspect`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ token }),
+  });
+  return res.json();
+}
+
 export async function fetchTokens(): Promise<unknown[]> {
   const res = await fetch(`${BASE_URL}/debug/tokens`);
   return res.json();

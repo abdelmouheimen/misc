@@ -75,7 +75,8 @@ et s'ouvrent directement dans le client HTTP d'IntelliJ. Voir leur README pour l
 |---|---|
 | `backend/` | Backend Spring Boot : validation DPoP, liaison et rotation des jetons |
 | `backend/…/DpopProofValidator.kt` | Les contrôles d'une preuve, dans l'ordre (le cœur du sujet) |
-| `backend/…/JwtService.kt` | Émission et vérification des JWT ES256, liaison `cnf.jkt` (RFC 9449 §6.1) |
+| `backend/…/JwtService.kt` | JWT signés (ES256) puis chiffrés (JWE RSA-OAEP-256 / A256GCM), liaison `cnf.jkt` |
+| `backend/…/IntrospectController.kt` | `/debug/introspect` : claims déchiffrés par le serveur (lab uniquement) |
 | `backend/…/TokenStore.kt` | Rotation du refresh token et détection de réutilisation |
 | `backend/…/AuthController.kt` | Endpoints `/login/connection`, `/login/refresh`, `/debug/tokens` |
 | `backend/…/JwksController.kt` | Clé publique de signature des jetons : `/.well-known/jwks.json` |
@@ -124,16 +125,27 @@ de l'article. DPoP lie le jeton à une clé, pas à une intention.
 
 - **Store en mémoire** au lieu de PostgreSQL : le sujet est DPoP, pas la persistance.
   L'endpoint `/debug/tokens` remplace l'inspection de la table `authentication_token`.
-- **Clé de signature des JWT générée au démarrage** : les jetons émis avant un redémarrage
-  deviennent invalides. En production, elle est persistée (KMS/HSM) et tournée.
+- **Clés de signature et de chiffrement générées au démarrage** : les jetons émis avant un
+  redémarrage deviennent invalides. En production, elles sont persistées (KMS/HSM) et tournées.
 - **Comparaison de `htu` sur le chemin** : voir la remarque « reverse proxy » de l'article.
 - **Anti-rejeu `jti` en mémoire** : suffisant en mono-instance ; en cluster, un store partagé
   (Redis) est nécessaire.
 
 ## Les jetons émis
 
-Access et refresh token sont de **vrais JWT signés en ES256** par le serveur. La liaison à la
-clé du client est portée par le claim `cnf.jkt` (RFC 9449 §6.1) :
+Access et refresh token sont des **JWT imbriqués, signés puis chiffrés** :
+
+1. **Signature (JWS ES256)** : le serveur signe les claims, ce qui garantit leur intégrité ;
+2. **Chiffrement (JWE `RSA-OAEP-256` + `A256GCM`, `cty: JWT`)** : le JWS signé est chiffré, ce
+   qui garantit sa confidentialité. Le client ne reçoit qu'un jeton opaque à 5 parties, dont
+   seul l'en-tête est lisible :
+
+```json
+{ "alg": "RSA-OAEP-256", "enc": "A256GCM", "cty": "JWT", "kid": "…" }
+```
+
+Une fois déchiffré par le serveur, on trouve le JWS et ses claims. La liaison à la clé du
+client est portée par `cnf.jkt` (RFC 9449 §6.1) :
 
 ```json
 { "typ": "at+jwt", "alg": "ES256", "kid": "…" }
@@ -145,9 +157,15 @@ clé du client est portée par le claim `cnf.jkt` (RFC 9449 §6.1) :
 }
 ```
 
-La clé publique est exposée sur `/.well-known/jwks.json`. La table des jetons (indexée par
-`jti`) reste nécessaire pour ce qu'un JWT seul ne permet pas : révocation, rotation et
-détection de réutilisation.
+Signature et chiffrement protègent le **contenu** du jeton, mais un jeton volé reste un jeton
+valide : ni l'un ni l'autre ne disent **qui** le présente. C'est ce qu'ajoute DPoP.
+
+- `/.well-known/jwks.json` expose la clé publique de **signature** (la clé de chiffrement
+  reste privée au serveur, qui est à la fois émetteur et destinataire des jetons) ;
+- `/debug/introspect` (lab uniquement) montre ce que seul le serveur voit après déchiffrement.
+
+La table des jetons (indexée par `jti`) reste nécessaire pour ce qu'un JWT seul ne permet
+pas : révocation, rotation et détection de réutilisation.
 
 ## Licence
 
