@@ -43,20 +43,22 @@ jobs:
             --exclude='docker-compose.vps.yml' \
             ./dpop-reader-kit/ "${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:${APP_DIR}/"
 
-      # The lab is intentionally insecure (unauthenticated /debug endpoints) and Web Crypto
-      # only works on HTTPS or localhost: publish ports on the VPS loopback only and reach
-      # the lab through an SSH tunnel (ssh -L 5173:localhost:5173 -L 8099:localhost:8099).
-      - name: Write VPS compose override (loopback only)
+      # Public HTTP exposure on the VPS IP (test server only: the /debug endpoints are public).
+      # Browsers only expose Web Crypto on HTTPS or localhost: to test DPoP over plain HTTP,
+      # enable chrome://flags/#unsafely-treat-insecure-origin-as-secure for http://<VPS_HOST>:5173.
+      - name: Configure public URLs (SPA backend URL, CORS origin, firewall)
         run: |
+          ssh "${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}" "cat > ${APP_DIR}/frontend/.env.production" <<'EOF'
+          VITE_BACKEND_URL=http://${{ secrets.VPS_HOST }}:8099
+          EOF
           ssh "${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}" "cat > ${APP_DIR}/docker-compose.vps.yml" <<'EOF'
           services:
             backend:
-              ports: !override
-                - "127.0.0.1:8099:8099"
-            frontend:
-              ports: !override
-                - "127.0.0.1:5173:80"
+              environment:
+                CORS_ALLOWED_ORIGIN: "http://${{ secrets.VPS_HOST }}:5173"
           EOF
+          ssh "${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}" \
+            "if command -v ufw >/dev/null; then ufw allow 5173/tcp >/dev/null; ufw allow 8099/tcp >/dev/null; fi"
 
       - name: Build & (re)start containers
         run: |
