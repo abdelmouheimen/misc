@@ -1,11 +1,9 @@
 name: Deploy dpop-reader-kit to VPS
 
+# Deploys on every merge (push) into main or master, or manually.
 on:
   push:
-    branches: [main]
-    paths:
-      - 'dpop-reader-kit/**'
-      - '.github/workflows/deploy-dpop-reader-kit.yml'
+    branches: [main, master]
   workflow_dispatch: {}
 
 # Never run two deploys at the same time
