@@ -5,7 +5,7 @@ cd "$(dirname "$0")"
 source ./_common.sh
 require_backend
 
-for s in 0[1-7]_*.sh; do
+for s in [0-9][0-9]_*.sh; do
   bash "$s"
 done
 
