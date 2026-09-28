@@ -35,7 +35,8 @@ data class TokenPair(val accessToken: String, val refreshToken: String)
  * Reproduit la logique décrite dans l'article :
  *  - rotation : à chaque refresh, l'ancien jeton est révoqué et une nouvelle paire émise ;
  *  - détection de réutilisation : rejouer un refresh déjà révoqué révoque toute la session ;
- *  - liaison DPoP : le jkt du jeton doit correspondre à celui de la preuve présentée.
+ *  - liaison DPoP : le jkt du jeton doit correspondre à celui de la preuve présentée, et
+ *    cette vérification ne dépend pas du drapeau global `dpop.required`.
  */
 @Service
 class TokenStore(private val jwtService: JwtService) {
@@ -54,8 +55,12 @@ class TokenStore(private val jwtService: JwtService) {
      * Renouvelle une paire de jetons à partir d'un refresh token (JWT).
      * Renvoie null si le JWT est invalide, expiré, inconnu ou d'un mauvais type,
      * ou si la liaison DPoP ne correspond pas.
+     *
+     * La liaison ne dépend PAS du drapeau global `dpop.required` : dès qu'un jeton porte
+     * une liaison, elle est vérifiée. Un refresh token lié à une clé reste donc refusé
+     * lorsqu'il est présenté sans preuve, même si le serveur tourne en mode bearer.
      */
-    fun refresh(refreshToken: String?, dpopJkt: String?, dpopRequired: Boolean): TokenPair? {
+    fun refresh(refreshToken: String?, dpopJkt: String?): TokenPair? {
         if (refreshToken.isNullOrBlank()) return null
 
         // Le JWT doit être authentique (signature du serveur), non expiré et de type refresh.
@@ -63,31 +68,35 @@ class TokenStore(private val jwtService: JwtService) {
         val existing = tokens[claims.jwtid] ?: return null
 
         // Détection de réutilisation : un refresh déjà révoqué rejoué = compromission probable.
+        // Ce contrôle passe AVANT la liaison : le jkt d'un jeton révoqué n'est jamais comparé.
         if (existing.revoked) {
             log.warn("REFRESH_TOKEN_REUSE_DETECTED userId={} — revoking all tokens", existing.userId)
             revokeAllForUser(existing.userId)
             throw TokenReuseException("Refresh token reuse detected")
         }
 
-        // Vérification de la liaison DPoP : cnf.jkt du jeton = jkt enregistré = jkt de la preuve.
-        if (dpopRequired) {
-            val tokenJkt = jwtService.boundJkt(claims)
-            if (tokenJkt != existing.dpopJkt) {
-                log.warn("cnf.jkt does not match stored binding userId={}", existing.userId)
-                return null
-            }
-            if (!tokenJkt.isNullOrEmpty() && tokenJkt != dpopJkt) {
-                log.warn("DPoP thumbprint mismatch on refresh userId={}", existing.userId)
-                return null
-            }
+        // Le cnf.jkt porté par le JWT doit correspondre à la liaison enregistrée côté serveur.
+        val tokenJkt = jwtService.boundJkt(claims)
+        if (tokenJkt != existing.dpopJkt) {
+            log.warn("cnf.jkt does not match stored binding userId={}", existing.userId)
+            return null
+        }
+
+        // Liaison DPoP : si le jeton est lié, la preuve présentée doit porter le même jkt.
+        val boundJkt = existing.dpopJkt
+        if (boundJkt != null && boundJkt != dpopJkt) {
+            log.warn("DPoP thumbprint mismatch on refresh userId={}", existing.userId)
+            return null
         }
 
         // Rotation : on révoque l'ancien refresh et les access de l'utilisateur, puis on réémet.
         existing.revoked = true
         revokeAccessForUser(existing.userId)
 
-        val newAccess = newToken(existing.userId, TokenType.ACCESS, dpopJkt, existing.sessionCreatedAt)
-        val newRefresh = newToken(existing.userId, TokenType.REFRESH, dpopJkt, existing.sessionCreatedAt)
+        // La rotation propage la liaison D'ORIGINE, jamais le jkt de la preuve reçue : une preuve
+        // ne peut donc pas déplacer une session existante vers une autre clé.
+        val newAccess = newToken(existing.userId, TokenType.ACCESS, boundJkt, existing.sessionCreatedAt)
+        val newRefresh = newToken(existing.userId, TokenType.REFRESH, boundJkt, existing.sessionCreatedAt)
         return TokenPair(newAccess, newRefresh)
     }
 

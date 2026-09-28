@@ -64,7 +64,7 @@ class AuthController(
             ?: request.cookies?.firstOrNull { it.name == "refresh_token" }?.value
 
         val pair = try {
-            tokenStore.refresh(refreshToken, jkt.ifEmpty { null }, dpopRequired)
+            tokenStore.refresh(refreshToken, jkt.ifEmpty { null })
         } catch (e: TokenReuseException) {
             return ConnectionResponse("NONE", "reuse detected: session revoked")
         } ?: return ConnectionResponse("NONE", "refresh rejected")

@@ -129,9 +129,24 @@ la réponse HTTP et le verdict.
 | 5 | `05_algorithm_and_jwk_tampering.sh` | `alg:none`, jwk falsifié, signature altérée → **rejet** |
 | 6 | `06_refresh_reuse_detection.sh` | Réutilisation d'un refresh tourné → **session révoquée** |
 | 7 | `07_limits_what_still_works.sh` | Signature depuis la page légitime → **réussit** (limite assumée) |
+| 8 | `08_reuse_kill_switch.sh` | Ancien refresh sans la clé → **session de la victime révoquée** |
+| 9 | `09_refresh_storm.sh` | Refresh parallèles d'une SPA → **auto-révocation** (faux positif) |
+| 10 | `10_htu_host_and_multi_instance.sh` | htu d'un autre hôte → **rejet** ; rejeu sur une 2e instance → **réussit** |
+| 11 | `11_binding_without_flag.sh` | Jeton lié présenté sans preuve en mode bearer → **rejet** |
 
 Le scénario 7 démontre une attaque qui **réussit** : c'est le propos de la partie « Limites »
 de l'article. DPoP lie le jeton à une clé, pas à une intention.
+
+Le scénario 11 vérifie une propriété de l'implémentation plutôt qu'une attaque : la liaison
+d'un refresh token ne dépend pas du drapeau `dpop.required`. Il ne s'exécute que si le backend
+tourne en mode bearer (`DPOP_REQUIRED=false`) et s'annonce comme ignoré sinon.
+
+Les scénarios 8 à 10 montrent des **pièges d'implémentation** : chacun réussit sur le lab
+tel quel et indique le correctif. Le scénario 10b demande une seconde instance :
+
+```bash
+java -jar backend/target/dpop-lab-backend-1.0.0.jar --server.port=8101
+```
 
 ## Ce que le lab simplifie par rapport à l'article
 
