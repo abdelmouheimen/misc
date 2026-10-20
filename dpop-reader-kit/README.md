@@ -89,7 +89,8 @@ et s'ouvrent directement dans le client HTTP d'IntelliJ. Voir leur README pour l
 | `backend/…/DpopProofValidator.kt` | Les contrôles d'une preuve, dans l'ordre (le cœur du sujet) |
 | `backend/…/JwtService.kt` | JWT signés (ES256) puis chiffrés (JWE RSA-OAEP-256 / A256GCM), liaison `cnf.jkt` |
 | `backend/…/IntrospectController.kt` | `/debug/introspect` : claims déchiffrés par le serveur (lab uniquement) |
-| `backend/…/TokenStore.kt` | Rotation du refresh token et détection de réutilisation |
+| `backend/…/TokenStore.kt` | Rotation atomique du refresh token et détection de réutilisation |
+| `backend/src/test/` | Tests JUnit : rotation concurrente, liaison DPoP, rejeu, réutilisation |
 | `backend/…/AuthController.kt` | Endpoints `/login/connection`, `/login/refresh`, `/debug/tokens` |
 | `backend/…/JwksController.kt` | Clé publique de signature des jetons : `/.well-known/jwks.json` |
 | `backend/…/CorsConfig.kt` | CORS autorisant l'en-tête `DPoP` et les credentials |
@@ -160,6 +161,65 @@ java -jar backend/target/dpop-lab-backend-1.0.0.jar --server.port=8101
   attaquant ; en production, le refresh token ne transite que par le cookie `HttpOnly`.
 - **Anti-rejeu `jti` en mémoire** : suffisant en mono-instance ; en cluster, un store partagé
   (Redis) est nécessaire.
+- **Rotation atomique par un verrou local** : garantie valable pour une seule instance (voir
+  ci-dessous).
+
+## Rotation atomique et requêtes concurrentes
+
+**Invariant** : un refresh token ne produit jamais plus d'un renouvellement réussi, même
+lorsque plusieurs requêtes le présentent au même instant.
+
+Une version antérieure ne le garantissait pas. `TokenStore.refresh()` lisait `revoked`, faisait
+ses contrôles, puis écrivait `revoked = true` sans exclusion mutuelle : deux requêtes pouvaient
+lire le jeton actif et obtenir chacune une nouvelle paire (22 doubles succès sur 100 essais de
+deux requêtes simultanées). La `ConcurrentHashMap` protège la structure de la table, pas cette
+séquence « lire puis modifier ». La requête perdante pouvait aussi révoquer la session avant
+que la gagnante n'émette sa paire, qui échappait alors à la révocation.
+
+**Mécanisme** : la lecture de l'état, les contrôles (réutilisation, `cnf.jkt`, liaison DPoP), la
+révocation de l'ancien jeton et l'émission de la nouvelle paire forment une seule section
+critique (`synchronized` sur un verrou unique du `TokenStore`). Le déchiffrement et la
+vérification du JWT restent hors du verrou, car ils ne lisent aucun état partagé. Un seul verrou,
+jamais imbriqué : pas de risque d'interblocage.
+
+**Politique pour la requête perdante (inchangée)** : sérialisée après la gagnante, elle trouve le
+jeton révoqué. Elle est donc traitée comme une réutilisation : `REFRESH_TOKEN_REUSE_DETECTED`, puis
+révocation de tous les jetons de l'utilisateur, y compris la paire que la gagnante vient de
+recevoir. Une SPA qui lance plusieurs refresh en parallèle se déconnecte donc elle-même
+(scénario 9). Le correctif côté client est de mutualiser le refresh en cours. Une politique plus
+tolérante côté serveur (fenêtre de grâce pour le même `jkt`) pourrait répondre à la requête
+perdante sans révoquer la session, mais elle ne doit jamais lui émettre une seconde paire.
+
+**Limites** :
+
+- Le verrou est **local à la JVM**. Derrière un load-balancer, deux instances ne partagent ni la
+  table ni le verrou (le scénario 10b montre la même limite pour l'anti-rejeu). En production, la
+  transition doit être atomique dans le store partagé, par exemple
+  `UPDATE refresh_token SET revoked = true WHERE jti = ? AND revoked = false`, en n'émettant la
+  nouvelle paire que si une ligne a été modifiée, dans la même transaction.
+- Le verrou est global : toutes les rotations sont sérialisées. C'est acceptable pour un lab ; un
+  service réel verrouillerait par famille de jetons, ou s'appuierait sur la base.
+- Le lab reste un support pédagogique, **pas une implémentation prête pour la production**.
+
+**Reproduire les tests** (JDK 25) :
+
+```bash
+cd backend && mvn test
+```
+
+`RefreshRotationConcurrencyTest` couvre :
+
+- deux requêtes simultanées avec des preuves distinctes ;
+- 10 et 50 requêtes concurrentes ;
+- la régression de 100 tours sans double succès ;
+- des sessions indépendantes tournées en parallèle.
+
+`RefreshFlowTest` couvre :
+
+- une mauvaise clé, sans révocation ;
+- une preuve rejouée, rejetée avant l'examen du refresh token ;
+- la réutilisation d'un ancien refresh token ;
+- la conservation de la liaison et de `sessionCreatedAt` au fil des rotations.
 
 ## Les jetons émis
 
