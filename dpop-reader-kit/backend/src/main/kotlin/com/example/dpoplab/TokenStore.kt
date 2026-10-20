@@ -22,7 +22,8 @@ data class TokenRecord(
     val dpopJkt: String?,
     val sessionCreatedAt: Instant,
     val expiresAt: Instant,
-    var revoked: Boolean = false,
+    // Modifié sous le verrou de TokenStore ; @Volatile pour les lectures hors verrou (debug).
+    @Volatile var revoked: Boolean = false,
 )
 
 class TokenReuseException(message: String) : RuntimeException(message)
@@ -36,7 +37,9 @@ data class TokenPair(val accessToken: String, val refreshToken: String)
  *  - rotation : à chaque refresh, l'ancien jeton est révoqué et une nouvelle paire émise ;
  *  - détection de réutilisation : rejouer un refresh déjà révoqué révoque toute la session ;
  *  - liaison DPoP : le jkt du jeton doit correspondre à celui de la preuve présentée, et
- *    cette vérification ne dépend pas du drapeau global `dpop.required`.
+ *    cette vérification ne dépend pas du drapeau global `dpop.required` ;
+ *  - atomicité : un refresh token ne produit jamais plus d'un renouvellement réussi, même
+ *    sous requêtes concurrentes (voir [refresh]).
  */
 @Service
 class TokenStore(private val jwtService: JwtService) {
@@ -44,11 +47,18 @@ class TokenStore(private val jwtService: JwtService) {
     private val log = LoggerFactory.getLogger(javaClass)
     private val tokens = ConcurrentHashMap<String, TokenRecord>()
 
-    fun createTokens(userId: String, dpopJkt: String?): TokenPair {
+    // Toute transition d'état de la table (émission, rotation, révocation) passe par ce verrou.
+    // La ConcurrentHashMap protège la structure de la table, pas le couple « lire revoked puis
+    // le modifier » : sans ce verrou, deux requêtes pouvaient tourner le même refresh token.
+    // Garantie limitée à UNE instance : en cluster, il faut une mise à jour conditionnelle dans
+    // un store partagé (UPDATE … WHERE revoked = false, puis vérifier le nombre de lignes).
+    private val lock = Any()
+
+    fun createTokens(userId: String, dpopJkt: String?): TokenPair = synchronized(lock) {
         val now = Instant.now()
         val access = newToken(userId, TokenType.ACCESS, dpopJkt, now)
         val refresh = newToken(userId, TokenType.REFRESH, dpopJkt, now)
-        return TokenPair(access, refresh)
+        TokenPair(access, refresh)
     }
 
     /**
@@ -59,51 +69,61 @@ class TokenStore(private val jwtService: JwtService) {
      * La liaison ne dépend PAS du drapeau global `dpop.required` : dès qu'un jeton porte
      * une liaison, elle est vérifiée. Un refresh token lié à une clé reste donc refusé
      * lorsqu'il est présenté sans preuve, même si le serveur tourne en mode bearer.
+     *
+     * Atomicité : la lecture de l'état, les contrôles, la révocation de l'ancien jeton et
+     * l'émission de la nouvelle paire forment une seule section critique. Deux requêtes qui
+     * présentent le même jeton sont donc sérialisées : la première le tourne, la seconde le
+     * trouve révoqué et suit la politique de réutilisation (révocation de la session, y compris
+     * la paire que la première vient de recevoir). Aucune ne peut réussir en double.
      */
     fun refresh(refreshToken: String?, dpopJkt: String?): TokenPair? {
         if (refreshToken.isNullOrBlank()) return null
 
         // Le JWT doit être authentique (signature du serveur), non expiré et de type refresh.
+        // Déchiffrement et vérification restent hors verrou : ils ne lisent aucun état partagé.
         val claims = jwtService.verify(refreshToken, TokenType.REFRESH) ?: return null
-        val existing = tokens[claims.jwtid] ?: return null
-
-        // Détection de réutilisation : un refresh déjà révoqué rejoué = compromission probable.
-        // Ce contrôle passe AVANT la liaison : le jkt d'un jeton révoqué n'est jamais comparé.
-        if (existing.revoked) {
-            log.warn("REFRESH_TOKEN_REUSE_DETECTED userId={} — revoking all tokens", existing.userId)
-            revokeAllForUser(existing.userId)
-            throw TokenReuseException("Refresh token reuse detected")
-        }
-
-        // Le cnf.jkt porté par le JWT doit correspondre à la liaison enregistrée côté serveur.
         val tokenJkt = jwtService.boundJkt(claims)
-        if (tokenJkt != existing.dpopJkt) {
-            log.warn("cnf.jkt does not match stored binding userId={}", existing.userId)
-            return null
+
+        synchronized(lock) {
+            val existing = tokens[claims.jwtid] ?: return null
+
+            // Détection de réutilisation : un refresh déjà révoqué rejoué = compromission probable.
+            // Ce contrôle passe AVANT la liaison : le jkt d'un jeton révoqué n'est jamais comparé.
+            if (existing.revoked) {
+                log.warn("REFRESH_TOKEN_REUSE_DETECTED userId={} — revoking all tokens", existing.userId)
+                revokeAllForUser(existing.userId)
+                throw TokenReuseException("Refresh token reuse detected")
+            }
+
+            // Le cnf.jkt porté par le JWT doit correspondre à la liaison enregistrée côté serveur.
+            if (tokenJkt != existing.dpopJkt) {
+                log.warn("cnf.jkt does not match stored binding userId={}", existing.userId)
+                return null
+            }
+
+            // Liaison DPoP : si le jeton est lié, la preuve présentée doit porter le même jkt.
+            val boundJkt = existing.dpopJkt
+            if (boundJkt != null && boundJkt != dpopJkt) {
+                log.warn("DPoP thumbprint mismatch on refresh userId={}", existing.userId)
+                return null
+            }
+
+            // Rotation : on révoque l'ancien refresh et les access de l'utilisateur, puis on réémet.
+            existing.revoked = true
+            revokeAccessForUser(existing.userId)
+
+            // La rotation propage la liaison D'ORIGINE, jamais le jkt de la preuve reçue : une preuve
+            // ne peut donc pas déplacer une session existante vers une autre clé.
+            val newAccess = newToken(existing.userId, TokenType.ACCESS, boundJkt, existing.sessionCreatedAt)
+            val newRefresh = newToken(existing.userId, TokenType.REFRESH, boundJkt, existing.sessionCreatedAt)
+            return TokenPair(newAccess, newRefresh)
         }
-
-        // Liaison DPoP : si le jeton est lié, la preuve présentée doit porter le même jkt.
-        val boundJkt = existing.dpopJkt
-        if (boundJkt != null && boundJkt != dpopJkt) {
-            log.warn("DPoP thumbprint mismatch on refresh userId={}", existing.userId)
-            return null
-        }
-
-        // Rotation : on révoque l'ancien refresh et les access de l'utilisateur, puis on réémet.
-        existing.revoked = true
-        revokeAccessForUser(existing.userId)
-
-        // La rotation propage la liaison D'ORIGINE, jamais le jkt de la preuve reçue : une preuve
-        // ne peut donc pas déplacer une session existante vers une autre clé.
-        val newAccess = newToken(existing.userId, TokenType.ACCESS, boundJkt, existing.sessionCreatedAt)
-        val newRefresh = newToken(existing.userId, TokenType.REFRESH, boundJkt, existing.sessionCreatedAt)
-        return TokenPair(newAccess, newRefresh)
     }
 
     /** Vue en lecture de la table des jetons (endpoint de debug — lab uniquement). */
     fun snapshot(): List<TokenRecord> = tokens.values.sortedBy { it.sessionCreatedAt }
 
-    fun reset() = tokens.clear()
+    fun reset() = synchronized(lock) { tokens.clear() }
 
     private fun newToken(userId: String, type: TokenType, jkt: String?, sessionCreatedAt: Instant): String {
         val issued = jwtService.issue(userId, type, jkt, sessionCreatedAt)
