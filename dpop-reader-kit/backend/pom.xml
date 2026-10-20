@@ -46,10 +46,17 @@
             <artifactId>nimbus-jose-jwt</artifactId>
             <version>10.9.1</version>
         </dependency>
+        <!-- Tests : JUnit 5, AssertJ et MockHttpServletRequest (spring-test) -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 
     <build>
         <sourceDirectory>src/main/kotlin</sourceDirectory>
+        <testSourceDirectory>src/test/kotlin</testSourceDirectory>
         <plugins>
             <plugin>
                 <groupId>org.jetbrains.kotlin</groupId>
