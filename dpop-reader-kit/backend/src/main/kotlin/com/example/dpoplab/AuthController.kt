@@ -99,7 +99,17 @@ class AuthController(
      * ou null si la preuve est requise/présente mais invalide.
      */
     private fun resolveJkt(request: HttpServletRequest): String? {
-        val header = request.getHeader("DPoP")
+        // RFC 9449 §4.3, contrôle 1 : une requête ne porte pas plus d'un en-tête DPoP.
+        // Une preuve compacte (JWS) ne contient jamais de virgule : une virgule signale des
+        // valeurs combinées en une seule ligne par un intermédiaire (RFC 9110 §5.3).
+        // Contrôle effectué avant toute validation (donc avant l'enregistrement du jti) et
+        // quel que soit dpop.required : plusieurs preuves ne valent jamais absence de preuve.
+        val values = request.getHeaders("DPoP")?.toList().orEmpty()
+        if (values.size > 1 || values.any { ',' in it }) {
+            log.warn("DPoP invalid: multiple DPoP headers")
+            return null
+        }
+        val header = values.firstOrNull()
         if (header == null) return if (dpopRequired) null else ""
         // Seul le chemin de la requête est pris ici : le validateur le combine à l'URL publique
         // configurée (dpop.public-base-url) pour comparer l'URI complète au claim htu.
