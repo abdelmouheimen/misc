@@ -7,6 +7,8 @@
 | Résultats bruts | `results/browser/20261124T213707Z`, `results/jvm/20261124T213730Z`, `results/load/20261125T000047Z` |
 | Synthèse générée | `results/summary/` (`RESULTS.md`, CSV, `figures/`) |
 
+> **Compléments :** les chiffres de ce rapport sont recalculés depuis les données brutes par `scripts/verify_numbers.py`. La relecture critique et les réserves supplémentaires sont dans [`AUDIT_SCIENTIFIQUE.md`](AUDIT_SCIENTIFIQUE.md). La mise en perspective externe est dans [`ANALYSE.md`](ANALYSE.md).
+
 ## 1. Résumé
 
 Trois niveaux de mesure, gardés séparés : leurs chiffres ne s'additionnent pas.
@@ -121,7 +123,7 @@ Tout le reste est identique : image, endpoints, rotation, détection de réutili
 
 ## 5. Résultats
 
-### 5.1 Navigateur (`results/summary/figures/browser_webcrypto.png`)
+### 5.1 Navigateur (figure 2 : `results/summary/figures/fig2_operations_cryptographiques`)
 
 | Opération (code du PoC) | Médiane | Moyenne | p95 | p99 | Fréquence |
 |---|---:|---:|---:|---:|---|
@@ -133,7 +135,7 @@ Tout le reste est identique : image, endpoints, rotation, détection de réutili
 - **Dispersion entre séries :** les médianes varient de moins de 5 % d'une série à l'autre.
 - **Taille :** une preuve fait 468 octets, soit 476 octets pour la ligne d'en-tête `DPoP: …`. Sous k6, elle ne fait que 466 octets, car l'URL `htu` y est plus courte.
 
-### 5.2 Serveur (JMH, 1 thread ; `results/summary/figures/jvm_components.png`, `results/summary/figures/jvm_replay_store.png`)
+### 5.2 Serveur (JMH, 1 thread ; figures 2, 5 et S1)
 
 | Opération | Moyenne (µs) | p50 | p99 | Débit (ops/s) | Alloc. (o/op) |
 |---|---:|---:|---:|---:|---:|
@@ -163,7 +165,7 @@ Les intervalles de confiance à 99,9 % de JMH restent sous 4 % du débit moyen, 
 - **Coût de `cnf.jkt` :** +1,4 % à l'émission et +2,2 % à la vérification du refresh token.
 - **Échelle :** le déchiffrement JWE RSA-OAEP du refresh token (1 411 µs) coûte plus cher que la validation d'une preuve DPoP.
 
-### 5.3 Bout en bout (`results/summary/figures/load_latency.png`, `results/summary/figures/load_cpu_throughput.png`)
+### 5.3 Bout en bout (figures 1, 3 et 4)
 
 **Valeurs absolues :** médiane des 3 répétitions, toutes valides de 10 à 100 req/s, sans aucune erreur.
 
@@ -215,7 +217,7 @@ Les 12 exécutions à 250 et 500 req/s sont non valides, **dans les deux modes**
 
 Aucune comparaison n'est tirée de ces exécutions. La cause a été diagnostiquée.
 
-### 6.1 La capacité baisse au fil de l'exécution (`results/summary/figures/load_timeline.png`, `results/summary/load_timeline.csv`)
+### 6.1 La capacité baisse au fil de l'exécution (figure 6, `results/summary/load_timeline.csv`)
 
 - **À 250 req/s :** le débit tient pendant 110 à 180 s, un peu moins longtemps en dpop qu'en bearer, puis s'effondre vers 150-200 req/s pendant que la latence passe de 5 ms à plus de 2 s.
 - **À 500 req/s :** le débit décroît régulièrement, de 500 à environ 150 req/s.

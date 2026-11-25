@@ -324,86 +324,7 @@ def analyze_load(d, out):
 
 
 # ---------------------------------------------------------------- graphiques
-def charts(out, browser, jvm, load):
-    import matplotlib; matplotlib.use('Agg')
-    import matplotlib.pyplot as plt
-    fig_dir = os.path.join(out, 'figures'); os.makedirs(fig_dir, exist_ok=True)
-    C = {'dpop': '#1f6feb', 'bearer': '#8b949e'}
-
-    if browser:
-        rows = [r for r in browser[1] if r['op'] != 'baseline_await']
-        fig, ax = plt.subplots(figsize=(8, 3.8))
-        y = range(len(rows))
-        ax.barh(y, [r['median_ms'] * 1000 for r in rows], color='#1f6feb',
-                xerr=[[0] * len(rows), [(r['p95_ms'] - r['median_ms']) * 1000 for r in rows]], capsize=3)
-        ax.set_yticks(list(y), [r['label'] for r in rows]); ax.invert_yaxis()
-        ax.set_xlabel('µs par opération (médiane, barre = p95)')
-        ax.set_title(f"Web Crypto dans Chromium {browser[0]['browserVersion']}")
-        fig.tight_layout(); fig.savefig(os.path.join(fig_dir, 'browser_webcrypto.png'), dpi=150); plt.close(fig)
-
-    if jvm:
-        rows = jvm[1]
-        comp = [r for r in rows if r['benchmark'] not in ('replayDetection', 'fullValidation', 'issueRefreshToken',
-                                                           'verifyRefreshToken') and 'lat_mean_us' in r]
-        extra = [r for r in rows if (r['benchmark'] == 'replayDetection' and r['storeSize'] == '0')
-                 or (r['benchmark'] == 'fullValidation' and r['storeSize'] == '0')
-                 or r['benchmark'] in ('issueRefreshToken', 'verifyRefreshToken')]
-        sel = comp + extra
-        lab = [r['label'] + (f" (store {r['storeSize']})" if r['storeSize'] else '') +
-               (f" (cnf.jkt={'oui' if r['bound'] == 'true' else 'non'})" if r['bound'] else '') for r in sel]
-        fig, ax = plt.subplots(figsize=(9, 5))
-        y = range(len(sel))
-        ax.barh(y, [r['lat_mean_us'] for r in sel], color=['#1f6feb' if r['benchmark'] not in
-                ('issueRefreshToken', 'verifyRefreshToken') else '#8b949e' for r in sel],
-                xerr=[r['lat_err_us'] for r in sel], capsize=3)
-        ax.set_yticks(list(y), lab, fontsize=8); ax.invert_yaxis(); ax.set_xscale('log')
-        ax.set_xlabel('µs par opération (moyenne JMH SampleTime, IC 99,9 %) — échelle log')
-        ax.set_title('Serveur (JMH, 1 thread) : étapes DPoP (bleu) et jetons du PoC (gris)')
-        fig.tight_layout(); fig.savefig(os.path.join(fig_dir, 'jvm_components.png'), dpi=150); plt.close(fig)
-
-        fig, ax = plt.subplots(figsize=(7, 4))
-        for b, c in (('replayDetection', '#d29922'), ('fullValidation', '#1f6feb')):
-            rs = sorted((r for r in rows if r['benchmark'] == b and 'lat_mean_us' in r), key=lambda r: int(r['storeSize']))
-            ax.errorbar([int(r['storeSize']) for r in rs], [r['lat_mean_us'] for r in rs],
-                        yerr=[r['lat_err_us'] for r in rs], marker='o', color=c, label=JMH_LABELS[b], capsize=3)
-        ax.set_xlabel('Entrées dans le store anti-rejeu (≈ preuves acceptées/s × 120 s)')
-        ax.set_ylabel('µs par opération (moyenne)'); ax.legend(); ax.grid(alpha=.3)
-        ax.set_title('Coût de la purge O(N) du store anti-rejeu du PoC')
-        fig.tight_layout(); fig.savefig(os.path.join(fig_dir, 'jvm_replay_store.png'), dpi=150); plt.close(fig)
-
-    if load and load[0]:
-        runs, agg, ov = load
-        def series(mode, key):
-            rs = sorted((a for a in agg if a['mode'] == mode), key=lambda a: a['rate'])
-            return ([a['rate'] for a in rs], [a[key + '_median'] for a in rs],
-                    [[a[key + '_median'] - a[key + '_min'] for a in rs], [a[key + '_max'] - a[key + '_median'] for a in rs]],
-                    [a['valid_runs'] == a['runs'] for a in rs])
-        fig, axes = plt.subplots(1, 3, figsize=(13, 4), sharex=True)
-        for ax, k, t in zip(axes, ('http_p50_ms', 'http_p95_ms', 'http_p99_ms'), ('p50', 'p95', 'p99')):
-            for mode in ('bearer', 'dpop'):
-                x, y, e, v = series(mode, k)
-                ax.errorbar(x, y, yerr=e, marker='o', color=C[mode], capsize=3, label=mode)
-                for xi, yi, vi in zip(x, y, v):
-                    if not vi: ax.plot(xi, yi, 'x', color='red', ms=10)
-            ax.set_xscale('log'); ax.set_yscale('log'); ax.set_title(f'Latence HTTP {t}')
-            ax.set_xlabel('débit demandé (req/s)'); ax.grid(alpha=.3)
-        axes[0].set_ylabel('ms (médiane des répétitions, barres min–max)'); axes[0].legend()
-        fig.suptitle('Renouvellement du refresh token — × rouge : au moins une exécution non valide')
-        fig.tight_layout(); fig.savefig(os.path.join(fig_dir, 'load_latency.png'), dpi=150); plt.close(fig)
-
-        fig, axes = plt.subplots(1, 2, figsize=(11, 4))
-        for mode in ('bearer', 'dpop'):
-            x, y, e, _ = series(mode, 'backend_cpu_ms_per_refresh')
-            axes[0].errorbar(x, y, yerr=e, marker='o', color=C[mode], capsize=3, label=mode)
-            x, y, e, _ = series(mode, 'achieved_ok_rps')
-            axes[1].errorbar(x, y, yerr=e, marker='o', color=C[mode], capsize=3, label=mode)
-        axes[0].set_xscale('log'); axes[0].set_xlabel('débit demandé (req/s)')
-        axes[0].set_ylabel('ms CPU backend par renouvellement'); axes[0].grid(alpha=.3); axes[0].legend()
-        lim = max(a['rate'] for a in agg) * 1.1
-        axes[1].plot([0, lim], [0, lim], ':', color='k', lw=1, label='débit demandé')
-        axes[1].set_xlabel('débit demandé (req/s)'); axes[1].set_ylabel('renouvellements réussis/s')
-        axes[1].grid(alpha=.3); axes[1].legend()
-        fig.tight_layout(); fig.savefig(os.path.join(fig_dir, 'load_cpu_throughput.png'), dpi=150); plt.close(fig)
+# Voir scripts/figures.py : les figures sont produites à partir des seules synthèses versionnées.
 
 
 # ---------------------------------------------------------------- rapport
@@ -477,9 +398,9 @@ def main():
     browser = analyze_browser(dirs['navigateur'], out) if dirs['navigateur'] else None
     jvm = analyze_jvm(dirs['JMH'], out) if dirs['JMH'] and glob.glob(os.path.join(dirs['JMH'], 'jmh.json*')) else None
     load = analyze_load(dirs['charge'], out) if dirs['charge'] else None
-    charts(out, browser, jvm, load)
     report(out, browser, jvm, load, dirs)
     print(f'synthèse écrite dans {os.path.abspath(out)}')
+
 
 
 if __name__ == '__main__':

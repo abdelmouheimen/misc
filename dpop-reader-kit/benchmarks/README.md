@@ -1,59 +1,174 @@
-# Benchmarks DPoP du dpop-reader-kit
+# Combien coûte DPoP ? Mesures sur le dpop-reader-kit
 
-Mesure du coût de DPoP dans le PoC qui accompagne l'article MISC « DPoP en pratique : quand voler un jeton ne suffit plus » :
-- génération des clés et des preuves dans le navigateur ;
-- validation des preuves côté serveur ;
-- surcoût d'un renouvellement de refresh token de bout en bout.
+Benchmarks reproductibles du PoC de l'article MISC « DPoP en pratique : quand voler un jeton ne suffit plus ».
 
-Rien ici ne modifie le PoC. Les benchmarks réutilisent son code de production :
-- `frontend/src/dpopService.ts` pour le navigateur ;
-- `backend/src/main/kotlin` pour JMH, compilé tel quel ;
-- l'image Docker du backend pour la charge HTTP.
+Campagne du 24-25 novembre 2026, révision `8e8ee37`, machine unique.
 
-Résultats et analyse : [`results/summary/RESULTS.md`](results/summary/RESULTS.md), [`RAPPORT_METHODOLOGIQUE.md`](RAPPORT_METHODOLOGIQUE.md), [`RAPPORT_NON_REGRESSION.md`](RAPPORT_NON_REGRESSION.md) et le paragraphe proposé pour l'article, [`PARAGRAPHE_ARTICLE_2.2.md`](PARAGRAPHE_ARTICLE_2.2.md).
+## 1. Objectif
 
-```
-benchmarks/
-  browser/   Web Crypto dans Chromium (Playwright) : page de mesure + lanceur
-  jvm/       Microbenchmarks JMH (module Maven séparé, sources du backend compilées tel quel)
-  load/      Charge HTTP k6 : scénario de renouvellement + Compose isolé
-  scripts/   Lanceurs, relevé d'environnement, analyse
-  results/   Résultats bruts (par campagne horodatée) et synthèse
-```
+Mesurer ce que DPoP (RFC 9449) ajoute au PoC, à trois niveaux, sans additionner leurs résultats :
+- **dans le navigateur :** produire une preuve ;
+- **sur le serveur :** valider une preuve ;
+- **de bout en bout :** renouveler un refresh token avec et sans DPoP, à débit constant.
 
-## Prérequis
+**Code mesuré :** uniquement le code de production du PoC :
+- `frontend/src/dpopService.ts` ;
+- `DpopProofValidator` ;
+- l'image Docker du backend.
 
-Tous les outils sont gratuits :
+**Mode sans DPoP :** il réutilise le réglage existant `dpop.required=false`. Il n'est activable que dans un Compose de benchmark isolé, sur un réseau interne et sans port publié.
 
-| Outil | Version utilisée | Rôle |
-|---|---|---|
-| JDK | 25 (`JAVA_HOME`, par défaut `C:\Program Files\Java\jdk-25.0.2`) | JMH, relevé d'environnement, lecture JFR |
-| Maven | 3.8+ | Construction du module JMH |
-| Node.js | 22.12+ | Benchmark navigateur |
-| Docker | Docker Desktop (WSL2) ou Docker Engine | Backend et k6 pour la charge |
-| Python | 3.10+ avec `matplotlib` | Analyse et graphiques |
-| Bash | Git Bash sous Windows | Scripts |
+## 2. Principaux résultats
 
-**Outils téléchargés automatiquement :**
-- **Playwright et Chromium :** versions figées par `browser/package-lock.json`.
-- **k6 :** binaire officiel `v2.4.0` récupéré sur les releases GitHub, avec vérification de sa somme SHA-256, puis exécuté dans un conteneur `alpine` (voir `scripts/fetch_k6.sh`).
+| Mesure | Sans DPoP | Avec DPoP | Écart |
+|---|---:|---:|---:|
+| Preuve dans Chromium (médiane) | – | 65 µs | – |
+| Validation d'une preuve, serveur Java (moyenne, 1 thread) | – | 524 µs | – |
+| Latence HTTP p50, 10 à 100 renouvellements/s | 3,63 à 4,06 ms | 4,39 à 5,01 ms | **+0,76 à +0,91 ms (+20 à +22 %)** |
+| CPU serveur par renouvellement | 4,05 à 5,13 ms | 4,73 à 6,08 ms | **+0,68 à +1,13 ms (+17 à +23 %)** |
+| Octets HTTP envoyés par renouvellement | 2 326 | 3 014 | +688 (+29,6 %), dont 474 pour l'en-tête DPoP |
+| Octets HTTP reçus par renouvellement | 4 706 | 5 133 | +427 (+9,1 %), dus au format des jetons du PoC |
 
-## Lancer les mesures
+**Validité :** les 18 exécutions de 10 à 100/s sont valides, sans aucune erreur. Les 9 paires « même répétition, même débit » montrent toutes un surcoût positif en p50 et en CPU.
 
-Depuis `dpop-reader-kit/benchmarks` :
+**Au-delà de 100/s :** à 250 et 500/s, **aucune exécution n'est valide, avec ou sans DPoP**. Le PoC sature sur sa table des jetons (§5). Aucun débit maximal n'est publié.
+
+**Pile mesurée :** les chiffres serveur valent pour la pile Java du PoC (JDK 25, SunEC, Nimbus 10.9). Des mesures publiques sur d'autres piles donnent une vérification ES256 environ dix fois moins chère ([ANALYSE.md](ANALYSE.md) §2).
+
+## 3. Surcoût cryptographique
+
+![Coût des opérations cryptographiques](results/summary/figures/fig2_operations_cryptographiques.png)
+
+**Côté navigateur :**
+- **Paire de clés P-256 :** 35 µs, une fois par session.
+- **Preuve complète :** 65 µs en médiane, dont 50 µs de signature ; p99 à 155 µs.
+
+**Côté serveur :**
+- **Validation complète :** 524 µs avec un store anti-rejeu vide.
+- **Vérification ES256 :** elle en représente l'essentiel.
+- **Autres étapes :** parsing, clé, thumbprint, claims et contrôles coûtent chacune moins de 5 µs ([figure S1](results/summary/figures/figS1_etapes_validation.png)).
+
+Les deux panneaux viennent d'environnements et de statistiques différents : ils ne se comparent pas et ne s'additionnent pas.
+
+## 4. Surcoût réseau
+
+![Surcoût réseau](results/summary/figures/fig4_surcout_reseau.png)
+
+**Inhérent à DPoP :** l'en-tête `DPoP` de chaque requête, soit 474 octets avec une clé P-256.
+
+**Propre au PoC :** le reste, parce que `cnf.jkt` grossit des jetons que le PoC transporte plusieurs fois :
+- chaque jeton est un JWS imbriqué dans un JWE (double Base64URL), d'où ≈ +107 octets par jeton ;
+- les deux jetons partent dans les cookies à chaque renouvellement ;
+- ils reviennent deux fois, dans les `Set-Cookie` et dans le corps JSON.
+
+La RFC 9449 laisse le serveur libre de conserver la liaison du refresh token de son côté (§5), ce qui n'ajouterait rien au jeton.
+
+## 5. Impact sur les performances applicatives
+
+![Temps CPU serveur par renouvellement](results/summary/figures/fig1_cpu_par_renouvellement.png)
+
+![Latence HTTP](results/summary/figures/fig3_latence_http.png)
+
+**Mesures :** le renouvellement du refresh token (`POST /login/refresh`) est mesuré à débit constant :
+- 120 s d'échauffement, puis 120 s de mesure ;
+- 3 répétitions dans un ordre aléatoire ;
+- un conteneur neuf par exécution.
+
+**Lecture des barres :** chaque barre est la médiane de 3 répétitions ; le trait va du minimum au maximum ; l'écart affiché au-dessus est la médiane des écarts appariés.
+
+**CPU par renouvellement :** c'est le CPU cumulé du conteneur divisé par le nombre de renouvellements, pas une latence. À 10/s, le CPU de fond de la JVM pèse davantage. Une régression sur les trois débits donne +1,01 ms par renouvellement.
+
+**À forte charge, le PoC sature, avec ou sans DPoP :**
+
+![Saturation du PoC](results/summary/figures/fig6_saturation_poc.png)
+
+- **Ce qu'on observe :** à charge constante, le débit baisse au fil de l'exécution.
+- **La cause, selon JFR :** le verrou global de `TokenStore.refresh` et un parcours de toute la table des jetons, jamais purgée, à chaque renouvellement.
+- **Ce que ça implique :** c'est une limite du PoC, pas de DPoP. Ces exécutions sont exclues des comparaisons.
+
+## 6. Coût du mécanisme anti-rejeu
+
+![Store anti-rejeu](results/summary/figures/fig5_store_anti_rejeu.png)
+
+**Fonctionnement :** le PoC conserve chaque `jti` 120 s et purge tout le store à chaque preuve (`removeIf`). Le coût est donc linéaire en N.
+
+**Validation complète selon la taille du store :**
+
+| `jti` dans le store | 0 | 1 200 | 12 000 | 60 000 |
+|---|---:|---:|---:|---:|
+| Validation | 524 µs | 527 µs | 641 µs | 1 322 µs |
+
+**Ce qui relève du PoC :** cette complexité vient de notre implémentation, pas de DPoP. Un store ordonné par date d'expiration, ou un cache à expiration native, purgerait sans parcourir les entrées encore valides (non mesuré ici).
+
+**Ce que dit la RFC 9449 :** le suivi des `jti` y est facultatif (« can store », §11.1). Elle propose aussi le nonce serveur.
+
+## 7. Limites et biais
+
+Détail : [AUDIT_SCIENTIFIQUE.md](AUDIT_SCIENTIFIQUE.md) §5 et [RAPPORT_METHODOLOGIQUE.md](RAPPORT_METHODOLOGIQUE.md) §7.
+
+**Environnement :**
+- une seule machine, un portable à processeur hybride (Core Ultra 7 155H) ;
+- pas de TLS, réseau Docker virtuel, une seule instance ;
+- débits ≤ 100/s.
+
+**Coûts propres à l'implémentation :**
+- **Serveur :** le coût mesuré dépend de la pile Java ; il n'est pas propre à DPoP.
+- **Micro et bout en bout :** l'écart entre JMH (+0,5 ms) et la mesure de bout en bout (+1 ms de CPU) n'est pas expliqué. Hypothèses : conteneurs non épinglés, GC, jetons plus longs.
+
+**Variabilité :**
+- **Répétitions :** 3 seulement, d'où des plages min–max et non des intervalles de confiance.
+- **p95 et p99 à 10/s :** ils reposent sur peu d'échantillons.
+
+**Navigateur :** un Chromium de bureau ; aucun mobile ni appareil d'entrée de gamme.
+
+## 8. Mise en perspective
+
+**État des connaissances :** aucune publication scientifique ni aucun benchmark contrôlé de bout en bout sur le coût de DPoP n'a été trouvé.
+
+**Mesures publiques :** les mesures publiques disponibles (Node et jose, Go) placent la vérification ES256 vers 40 à 50 µs sur d'autres matériels. Ce n'est pas une comparaison directe.
+
+**Choix de Google (octobre 2026) :**
+- **Ce qui est lié :** Google lie avec DPoP **uniquement les refresh tokens**.
+- **Les jetons d'accès :** ils restent des bearer d'une heure au plus.
+- **La justification :** éviter « the per-request asymmetric cryptographic verification overhead of DPoP » sur ses API à fort trafic.
+
+**Ce que montrent nos mesures :** le même mécanisme, à petite échelle. Le coût se paie à chaque requête protégée.
+
+**Ce qu'elles ne montrent pas :** elles ne reproduisent pas les performances de Google.
+
+Sources, analyse du compromis et conclusions : [ANALYSE.md](ANALYSE.md).
+
+## 9. Reproduire
+
+**Prérequis**, tous gratuits :
+
+| Outil | Version de référence |
+|---|---|
+| JDK | 25 (`JAVA_HOME`) |
+| Maven | 3.8+ |
+| Node.js | 22.12+ |
+| Docker | Desktop (WSL2) ou Engine |
+| Python | 3.10+ avec `matplotlib` |
+| Bash | sous Windows : Git Bash |
+
+Playwright, Chromium et k6 v2.4.0 (dont la somme SHA-256 est vérifiée) sont téléchargés automatiquement.
+
+**Lancer, depuis `dpop-reader-kit/benchmarks` :**
 
 ```bash
-scripts/run_all.sh        # tout, séquentiellement, puis l'analyse (4 h 40 mesurées ; refuse de démarrer sur batterie)
+scripts/run_all.sh                 # campagne complète puis analyse : 4 h 40 ; refuse de démarrer sur batterie
+scripts/run_browser.sh             # Web Crypto dans Chromium         (< 1 min)
+scripts/run_jvm.sh                 # JMH, 3 forks × 10 × 5 s          (2 h 23)
+scripts/run_load.sh                # k6, 5 débits × 2 modes × 3 rép.  (2 h 13)
 
-scripts/run_browser.sh    # Web Crypto dans Chromium            (< 1 min)
-scripts/run_jvm.sh        # JMH, configuration complète          (2 h 23)
-scripts/run_load.sh       # k6, 5 débits × 2 modes × 3 répétitions (2 h 13)
-python3 scripts/analyze.py   # tableaux et graphiques à partir des derniers résultats
-python3 scripts/load_timeline.py   # débit et latence pendant chaque exécution k6 (diagnostic)
+python3 scripts/analyze.py         # synthèse CSV + RESULTS.md depuis les résultats bruts
+python3 scripts/load_timeline.py   # chronologie des exécutions k6 (diagnostic de saturation)
 scripts/jfr_hotspots.sh > results/summary/jfr_hotspots.txt   # contention et points chauds (JFR)
+python3 scripts/figures.py         # figures SVG + PNG 300 dpi, depuis les seules synthèses versionnées
+python3 scripts/verify_numbers.py  # contre-vérification des chiffres publiés depuis les données brutes
 ```
 
-**Essais rapides, sans valeur de mesure :**
+**Essais rapides** (sans valeur de mesure) :
 
 ```bash
 scripts/run_browser.sh --series 1 --iterations 200
@@ -61,77 +176,26 @@ scripts/run_jvm.sh -f 1 -wi 1 -w 2 -i 2 -r 2 DpopValidationBenchmark.fullValidat
 CAMPAIGN=smoke RATES="50" REPS=1 WARMUP=10 DURATION=20 scripts/run_load.sh
 ```
 
-**Paramètres principaux :**
-- **`run_browser.sh` :** `--series`, `--warmup`, `--iterations`, `--batch`.
-- **`run_jvm.sh` :** toute option JMH.
-- **`run_load.sh` (variables d'environnement) :** `RATES`, `REPS`, `WARMUP`, `DURATION`, `SEED`, `COOLDOWN`.
+**Points de méthode :**
+- JMH et Chromium sont épinglés sur les cœurs P (`PIN_MASK`, `scripts/cpu_topology.ps1`).
+- Une exécution k6 n'est valide que si elle respecte trois conditions :
+  - erreurs ≤ 1 % ;
+  - débit atteint ≥ 95 % du débit demandé ;
+  - k6 sous 80 % de ses CPU.
 
-## Ce que mesure chaque benchmark
+## 10. Résultats bruts et rapports
 
-### Navigateur (`browser/`)
-
-Chromium sans interface, piloté par Playwright. La page est servie sur `127.0.0.1` avec COOP/COEP, ce qui isole l'origine et donne à `performance.now()` une résolution de 5 µs. Chaque série tourne dans un nouveau contexte de navigation. Le démarrage du navigateur n'est jamais chronométré.
-
-| Opération | Code exécuté |
+| Document | Contenu |
 |---|---|
-| Génération de la paire ECDSA P-256 | `crypto.subtle.generateKey`, paramètres de `initializeDPopKeyPair` |
-| Export de la clé publique en JWK | `crypto.subtle.exportKey('jwk', …)` |
-| `initializeDPopKeyPair()` | fonction du PoC |
-| Thumbprint JWK | `computeJkt()` du PoC |
-| Signature ECDSA seule | `crypto.subtle.sign` sur une entrée de la taille réelle d'une preuve |
-| Preuve complète | `buildDPopProof()` du PoC |
-| Taille des preuves | longueur des preuves produites |
+| [results/summary/RESULTS.md](results/summary/RESULTS.md) | tous les tableaux générés : navigateur, JMH, charge, exécutions non valides |
+| [results/summary/](results/summary/) | CSV de synthèse, `load_timeline.csv`, `jfr_hotspots.txt`, figures (SVG et PNG) |
+| [RAPPORT_METHODOLOGIQUE.md](RAPPORT_METHODOLOGIQUE.md) | méthode détaillée, environnement, résultats commentés, diagnostic de saturation |
+| [AUDIT_SCIENTIFIQUE.md](AUDIT_SCIENTIFIQUE.md) | relecture critique, contre-vérification, corrections, réserves |
+| [ANALYSE.md](ANALYSE.md) | sources externes, choix de Google, conclusions |
+| [RAPPORT_NON_REGRESSION.md](RAPPORT_NON_REGRESSION.md) | tests, scénarios d'attaque, absence de secrets |
+| [PARAGRAPHE_ARTICLE_2.2.md](PARAGRAPHE_ARTICLE_2.2.md) | propositions de texte pour l'article |
 
-Chaque opération est mesurée de deux façons : par appel (moyenne, médiane, min, max, p95, p99, écart-type) et sur un lot d'appels consécutifs (moyenne non limitée par la résolution du timer).
-
-### Serveur (`jvm/`, JMH 1.37)
-
-**Configuration :** 3 forks, 5 × 5 s d'échauffement, 10 × 5 s de mesure, 1 thread, modes `Throughput` et `SampleTime`, profileur GC (allocations par opération), sortie JSON. Les sources Kotlin du backend sont compilées telles quelles dans le module.
-
-**Benchmarks :**
-- **Étapes du validateur :** parsing, reconstruction de la clé publique, vérification ES256, thumbprint, extraction des claims, contrôles htm/htu/iat.
-- **Anti-rejeu :** `purgeExpiredJtis` puis `putIfAbsent`, pour un store de 0, 1 200, 12 000 et 60 000 entrées.
-- **Validation complète :** le vrai `DpopProofValidator.validate()`, pour les mêmes tailles de store.
-- **Comparaison :** émission et vérification d'un refresh token, avec et sans `cnf.jkt`.
-
-**Précautions :**
-- **Code privé :** les deux méthodes privées du validateur (`sameHttpUri`, `purgeExpiredJtis`) sont appelées par `MethodHandle`, sans copie ni modification de leur visibilité.
-- **Données hors mesure :** les preuves de la validation complète sont générées avant chaque itération (iat frais, jti uniques), dans un pool de threads séparé, puis un GC est forcé. Une itération échoue si une seule preuve est rejetée ou si le pool s'épuise : le chemin de rejet n'est jamais mesuré par erreur.
-- **Taille du store constante :** le jti inséré est retiré après chaque opération (retrait inclus dans la mesure).
-- **Épinglage :** sous Windows, la JVM est épinglée sur les cœurs P (`PIN_MASK`, voir `scripts/cpu_topology.ps1`). Sur un processeur hybride, un fork placé sur un cœur E est environ deux fois plus lent.
-
-### Bout en bout (`load/`, k6 2.4)
-
-| | A. Baseline (`bearer`) | B. DPoP (`dpop`) |
-|---|---|---|
-| `DPOP_REQUIRED` | `false` | `true` (défaut du PoC) |
-| En-tête `DPoP` | absent | preuve fraîche à chaque requête |
-| Jetons | JWS ES256 chiffrés en JWE, sans `cnf.jkt` | identiques, avec `cnf.jkt` |
-| Endpoints, rotation, détection de réutilisation, cookies | identiques | identiques |
-| Image, JVM (`-Xms1g -Xmx1g`, G1, 4 CPU), conteneur (4 CPU, 2 Go), réseau | identiques | identiques |
-
-**Baseline :**
-- **Réglage réutilisé :** elle utilise le réglage `dpop.required=false` qui existe déjà dans le PoC (README, `docker-compose.yml`). Aucun mécanisme n'est ajouté.
-- **Isolement :** elle n'est activée que dans `load/docker-compose.bench.yml`, sur un réseau Docker interne, sans port publié.
-- **Liaisons préservées :** dans ce mode, un jeton lié à une clé reste lié (scénario d'attaque 11).
-
-**Scénario :**
-- **Charge :** débit d'arrivée constant de 10, 50, 100, 250 et 500 req/s, avec 120 s d'échauffement puis 120 s de mesure.
-- **Répétitions :** 3, dans un ordre tiré au sort à chaque répétition (graine enregistrée).
-- **État initial :** chaque exécution part d'un conteneur neuf.
-- **Sessions :** chaque VU a sa session, sa clé et ses cookies. Il renvoie toujours le dernier refresh token reçu (rotation) et signe chaque preuve avec un jti unique et un iat courant.
-
-**Relevés :**
-- **Latences :** latence HTTP (`timings.duration`, sans la génération de la preuve) et durée totale (preuve + requête, résolution 1 ms).
-- **Débit :** débit atteint, erreurs, `dropped_iterations`.
-- **CPU :** CPU des conteneurs backend et k6, lu dans les cgroups au début et à la fin de la fenêtre de mesure.
-- **JVM :** GC et allocations, depuis l'enregistrement JFR du backend.
-- **Réseau :** octets envoyés et reçus par requête.
-- **Occupation :** table des jetons et store anti-rejeu.
-
-**Validité :** une exécution n'est valide que si erreurs ≤ 1 %, débit atteint ≥ 95 % du débit demandé et k6 sous 80 % de ses CPU. Les exécutions non valides sont signalées et exclues des comparaisons.
-
-## Résultats
+**Organisation des résultats bruts :**
 
 ```
 results/
@@ -139,12 +203,8 @@ results/
   jvm/<date>/       jmh.json.gz (sortie JMH complète), jmh.log, environment.json
   load/<campagne>/  plan.csv, parameters.json, environment.json
     rep<N>/<débit>rps_<mode>/
-      summary.json            résumé k6 de l'exécution
-      measure_samples.csv.gz  latences de chaque renouvellement de la phase de mesure
-      run.json                CPU, mémoire, occupation de la table des jetons
-      docker_stats.csv        CPU/mémoire des deux conteneurs, ≈ 1 échantillon/s
-      k6.csv.gz, backend.jfr  bruts complets (volumineux, non versionnés)
-  summary/          tableaux CSV, RESULTS.md, figures/, load_timeline.csv, jfr_hotspots.txt
+      summary.json, run.json, docker_stats.csv, measure_samples.csv.gz
+      k6.csv.gz, backend.jfr   bruts complets, volumineux, non versionnés
 ```
 
-**Données sensibles :** aucun résultat ne contient de clé privée ni de jeton. Les clés de test sont générées en mémoire et jamais écrites. k6 n'exporte que des métriques. L'endpoint `/debug/tokens` n'est interrogé que pour compter les entrées.
+**Données sensibles :** aucun résultat ne contient de clé privée ni de jeton. Les clés de test sont générées en mémoire, et k6 n'exporte que des métriques.

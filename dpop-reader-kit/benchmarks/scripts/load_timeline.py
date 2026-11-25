@@ -7,8 +7,8 @@ Sert à diagnostiquer les exécutions non valides : un débit qui décroît pend
 alors que la charge demandée est constante désigne un coût qui croît avec l'état du serveur
 (ici, la table des jetons du PoC), pas une saturation immédiate du CPU.
 
-Lit les k6.csv.gz complets (non versionnés) ; écrit load_timeline.csv et
-figures/load_timeline.png (versionnés).
+Lit les k6.csv.gz complets (non versionnés) ; écrit load_timeline.csv (versionné),
+dont scripts/figures.py tire la figure 6.
 """
 import argparse, csv, glob, gzip, json, os, sys
 from collections import defaultdict
@@ -50,7 +50,7 @@ def main():
     a = ap.parse_args()
     camp = a.load or sorted(d for d in glob.glob(os.path.join(RES, 'load', '*'))
                             if os.path.isdir(d) and not os.path.basename(d).startswith('smoke'))[-1]
-    out = a.out or os.path.join(RES, 'summary'); os.makedirs(os.path.join(out, 'figures'), exist_ok=True)
+    out = a.out or os.path.join(RES, 'summary'); os.makedirs(out, exist_ok=True)
     params = json.load(open(os.path.join(camp, 'parameters.json'), encoding='utf-8'))
     series, rows = {}, []
     for rd in sorted(glob.glob(os.path.join(camp, 'rep*', '*rps_*'))):
@@ -62,28 +62,6 @@ def main():
         w = csv.DictWriter(f, fieldnames=['rep', 'rate', 'mode', 't_s', 'ok_per_s', 'p50_http_ms'])
         w.writeheader(); w.writerows(rows)
 
-    import matplotlib; matplotlib.use('Agg'); import matplotlib.pyplot as plt
-    rates = sorted({k[1] for k in series if k[1] >= 100})
-    colors = {'bearer': '#8a929e', 'dpop': '#1f6feb'}
-    fig, axes = plt.subplots(2, len(rates), figsize=(4.2 * len(rates), 6.4), sharex=True, squeeze=False)
-    warm = int(params['warmupS'])
-    for j, rate in enumerate(rates):
-        for (rep, r, mode), tl in sorted(series.items()):
-            if r != rate: continue
-            t = [x['t_s'] for x in tl]
-            kw = dict(color=colors[mode], alpha=.8, lw=1.2, label=mode if rep == 1 else None)
-            axes[0][j].plot(t, [x['ok_per_s'] for x in tl], **kw)
-            axes[1][j].plot(t, [x['p50_http_ms'] for x in tl], **kw)
-        axes[0][j].axhline(rate, color='k', ls=':', lw=1, label='débit demandé')
-        axes[0][j].set_title(f'{rate} req/s demandées'); axes[0][j].set_ylim(0, rate * 1.15)
-        axes[1][j].set_yscale('log'); axes[1][j].set_xlabel('temps depuis le début (s)')
-        for i in (0, 1):
-            axes[i][j].axvspan(0, warm, color='#f0f0f0', zorder=0); axes[i][j].grid(alpha=.3)
-    axes[0][0].set_ylabel('renouvellements réussis/s'); axes[1][0].set_ylabel('p50 HTTP (ms)')
-    axes[0][0].legend(fontsize=8)
-    fig.suptitle(f'Évolution pendant chaque exécution (tranches de {a.bin} s ; zone grise : échauffement ; '
-                 '3 répétitions par mode)', fontsize=10)
-    fig.tight_layout(); fig.savefig(os.path.join(out, 'figures', 'load_timeline.png'), dpi=150); plt.close(fig)
     print(f'chronologie écrite dans {os.path.abspath(out)}')
 
 
