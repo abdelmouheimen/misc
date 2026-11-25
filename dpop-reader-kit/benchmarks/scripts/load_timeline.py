@@ -9,6 +9,10 @@ alors que la charge demandée est constante désigne un coût qui croît avec l'
 
 Lit les k6.csv.gz complets (non versionnés) ; écrit load_timeline.csv (versionné),
 dont scripts/figures.py tire la figure 6.
+
+Garde-fou : si un k6.csv.gz attendu (plan.csv de la campagne, ou exécution présente) manque ou
+est vide, le script s'arrête avec le code 2 sans toucher à load_timeline.csv. C'est le cas dans
+un simple clone du dépôt, où ces fichiers bruts ne sont pas versionnés.
 """
 import argparse, csv, glob, gzip, json, os, sys
 from collections import defaultdict
@@ -44,6 +48,26 @@ def timeline(run_dir, bin_s):
                   for b in range(last)]
 
 
+def check_raw_inputs(camp, out):
+    """Arrête le script (code 2), sans rien écrire, si un k6.csv.gz attendu manque ou est vide."""
+    expected = set(glob.glob(os.path.join(camp, 'rep*', '*rps_*')))
+    plan = os.path.join(camp, 'plan.csv')
+    if os.path.exists(plan):
+        with open(plan, encoding='utf-8') as f:
+            expected |= {os.path.join(camp, f"rep{r['rep']}", f"{r['rate']}rps_{r['mode']}") for r in csv.DictReader(f)}
+    missing = sorted(os.path.relpath(os.path.join(rd, 'k6.csv.gz'), camp) for rd in expected
+                     if not os.path.isfile(os.path.join(rd, 'k6.csv.gz'))
+                     or os.path.getsize(os.path.join(rd, 'k6.csv.gz')) == 0)
+    if expected and not missing: return
+    target = os.path.join(out, 'load_timeline.csv')
+    print(f'ERREUR : résultats bruts k6 absents ou incomplets dans {camp} '
+          f'({len(missing)} fichier(s) k6.csv.gz manquant(s) ou vide(s) sur {len(expected)} exécution(s) attendue(s)'
+          f'{", ex. " + missing[0] if missing else ""}).\n'
+          f'Ces fichiers ne sont pas versionnés : ils ne sont produits que par une campagne (scripts/run_load.sh).\n'
+          f'{target} n\'a pas été modifié.', file=sys.stderr)
+    sys.exit(2)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--load'); ap.add_argument('--out'); ap.add_argument('--bin', type=int, default=10)
@@ -52,6 +76,7 @@ def main():
                             if os.path.isdir(d) and not os.path.basename(d).startswith('smoke'))[-1]
     out = a.out or os.path.join(RES, 'summary'); os.makedirs(out, exist_ok=True)
     params = json.load(open(os.path.join(camp, 'parameters.json'), encoding='utf-8'))
+    check_raw_inputs(camp, out)
     series, rows = {}, []
     for rd in sorted(glob.glob(os.path.join(camp, 'rep*', '*rps_*'))):
         if not os.path.exists(os.path.join(rd, 'k6.csv.gz')): continue

@@ -1,6 +1,6 @@
 # Mise en perspective, choix de Google et conclusions
 
-Ce document situe nos mesures par rapport aux publications externes, analyse le choix d'architecture annoncé par Google, puis répond aux questions de fond. Les résultats eux-mêmes sont dans le [README](README.md), la méthode dans le [rapport méthodologique](RAPPORT_METHODOLOGIQUE.md) et les réserves dans l'[audit](AUDIT_SCIENTIFIQUE.md).
+Ce document situe nos mesures par rapport aux publications externes, analyse le choix d'architecture annoncé par Google, puis répond aux questions de fond. Les résultats eux-mêmes sont dans le [README](README.md), la méthode dans [METHODOLOGY.md](METHODOLOGY.md), les biais et réserves dans [VALIDATION.md](VALIDATION.md).
 
 Toutes les sources ont été consultées le 25 novembre 2026. Les citations sont reprises mot pour mot.
 

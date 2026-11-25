@@ -4,6 +4,8 @@ Benchmarks reproductibles du PoC de l'article MISC « DPoP en pratique : quand v
 
 Campagne du 24-25 novembre 2026, révision `8e8ee37`, machine unique.
 
+> **Traçabilité.** Tous les résultats de ce dossier ont été obtenus sur la révision `8e8ee37`. Le PoC rejette désormais les requêtes portant plusieurs en-têtes `DPoP` (RFC 9449 §4.3). Ce contrôle a été ajouté après la campagne de mesures. Son impact sur les performances n’a pas été mesuré. Voir [VALIDATION.md](VALIDATION.md) §7.
+
 ## 1. Objectif
 
 Mesurer ce que DPoP (RFC 9449) ajoute au PoC, à trois niveaux, sans additionner leurs résultats :
@@ -33,15 +35,21 @@ Mesurer ce que DPoP (RFC 9449) ajoute au PoC, à trois niveaux, sans additionner
 
 **Au-delà de 100/s :** à 250 et 500/s, **aucune exécution n'est valide, avec ou sans DPoP**. Le PoC sature sur sa table des jetons (§5). Aucun débit maximal n'est publié.
 
-**Pile mesurée :** les chiffres serveur valent pour la pile Java du PoC (JDK 25, SunEC, Nimbus 10.9). Des mesures publiques sur d'autres piles donnent une vérification ES256 environ dix fois moins chère ([ANALYSE.md](ANALYSE.md) §2).
+**Pile mesurée :** les chiffres serveur valent pour la pile Java du PoC (JDK 25, SunEC, Nimbus 10.9). Des mesures publiques sur d'autres piles donnent une vérification ES256 environ dix fois moins chère ([ANALYSIS.md](ANALYSIS.md) §2).
 
 ## 3. Surcoût cryptographique
 
 ![Coût des opérations cryptographiques](results/summary/figures/fig2_operations_cryptographiques.png)
 
-**Côté navigateur :**
-- **Paire de clés P-256 :** 35 µs, une fois par session.
-- **Preuve complète :** 65 µs en médiane, dont 50 µs de signature ; p99 à 155 µs.
+**Côté navigateur**, en médiane sur 5 séries de 2 000 mesures :
+
+| Opération | Médiane | Fréquence |
+|---|---:|---|
+| Génération de la paire ECDSA P-256 seule (`generateKey`) | 35 µs | une fois par session |
+| Initialisation complète, `initializeDPopKeyPair()` : génération puis export de la JWK publique | 50 µs | une fois par session |
+| Génération d'une preuve DPoP, `buildDPopProof()` (dont 50 µs de signature ECDSA ; p99 à 155 µs) | 65 µs | à chaque requête protégée |
+
+Chaque ligne est une série mesurée séparément : les valeurs ne s'additionnent pas. La résolution du timer est de 5 µs.
 
 **Côté serveur :**
 - **Validation complète :** 524 µs avec un store anti-rejeu vide.
@@ -104,7 +112,7 @@ La RFC 9449 laisse le serveur libre de conserver la liaison du refresh token de 
 
 ## 7. Limites et biais
 
-Détail : [AUDIT_SCIENTIFIQUE.md](AUDIT_SCIENTIFIQUE.md) §5 et [RAPPORT_METHODOLOGIQUE.md](RAPPORT_METHODOLOGIQUE.md) §7.
+Détail : [VALIDATION.md](VALIDATION.md) §5 et [METHODOLOGY.md](METHODOLOGY.md) §7.
 
 **Environnement :**
 - une seule machine, un portable à processeur hybride (Core Ultra 7 155H) ;
@@ -136,7 +144,7 @@ Détail : [AUDIT_SCIENTIFIQUE.md](AUDIT_SCIENTIFIQUE.md) §5 et [RAPPORT_METHODO
 
 **Ce qu'elles ne montrent pas :** elles ne reproduisent pas les performances de Google.
 
-Sources, analyse du compromis et conclusions : [ANALYSE.md](ANALYSE.md).
+Sources, analyse du compromis et conclusions : [ANALYSIS.md](ANALYSIS.md).
 
 ## 9. Reproduire
 
@@ -168,6 +176,18 @@ python3 scripts/figures.py         # figures SVG + PNG 300 dpi, depuis les seule
 python3 scripts/verify_numbers.py  # contre-vérification des chiffres publiés depuis les données brutes
 ```
 
+**Ce qui se rejoue depuis un simple clone du dépôt.** Les résultats bruts les plus volumineux (`k6.csv.gz`, `backend.jfr`) ne sont pas versionnés (voir §10).
+
+| Script | Avec les seules données versionnées |
+|---|---|
+| `scripts/verify_numbers.py` | **oui** : recalcule les chiffres publiés depuis `raw.json`, `jmh.json.gz`, `measure_samples.csv.gz` et `run.json` |
+| `scripts/figures.py` | **oui** : régénère les figures depuis `results/summary/` |
+| `scripts/analyze.py` | **non** : la partie charge lit `k6.csv.gz` et s'arrête en son absence |
+| `scripts/load_timeline.py` | **non** : il lit `k6.csv.gz`. Si un de ces fichiers manque ou est vide, il s'arrête avec un message explicite et le code de sortie 2, **sans modifier** `results/summary/load_timeline.csv` (chronologie versionnée qui alimente la figure 6) |
+| `scripts/jfr_hotspots.sh` | **non** : il lit `backend.jfr` |
+
+Ces trois derniers scripts se rejouent après une nouvelle campagne, qui produit les fichiers bruts complets.
+
 **Essais rapides** (sans valeur de mesure) :
 
 ```bash
@@ -189,11 +209,9 @@ CAMPAIGN=smoke RATES="50" REPS=1 WARMUP=10 DURATION=20 scripts/run_load.sh
 |---|---|
 | [results/summary/RESULTS.md](results/summary/RESULTS.md) | tous les tableaux générés : navigateur, JMH, charge, exécutions non valides |
 | [results/summary/](results/summary/) | CSV de synthèse, `load_timeline.csv`, `jfr_hotspots.txt`, figures (SVG et PNG) |
-| [RAPPORT_METHODOLOGIQUE.md](RAPPORT_METHODOLOGIQUE.md) | méthode détaillée, environnement, résultats commentés, diagnostic de saturation |
-| [AUDIT_SCIENTIFIQUE.md](AUDIT_SCIENTIFIQUE.md) | relecture critique, contre-vérification, corrections, réserves |
-| [ANALYSE.md](ANALYSE.md) | sources externes, choix de Google, conclusions |
-| [RAPPORT_NON_REGRESSION.md](RAPPORT_NON_REGRESSION.md) | tests, scénarios d'attaque, absence de secrets |
-| [PARAGRAPHE_ARTICLE_2.2.md](PARAGRAPHE_ARTICLE_2.2.md) | propositions de texte pour l'article |
+| [METHODOLOGY.md](METHODOLOGY.md) | méthode détaillée, environnement, résultats commentés, diagnostic de saturation |
+| [VALIDATION.md](VALIDATION.md) | contre-vérification interne des chiffres, biais et réserves, non-régression du PoC (tests, scénarios d'attaque, secrets), correction postérieure à la campagne |
+| [ANALYSIS.md](ANALYSIS.md) | sources externes, choix de Google, conclusions |
 
 **Organisation des résultats bruts :**
 

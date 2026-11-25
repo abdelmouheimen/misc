@@ -98,7 +98,8 @@ et s'ouvrent directement dans le client HTTP d'IntelliJ. Voir leur README pour l
 | `frontend/src/dpopService.ts` | Génération de la clé non exportable et signature des preuves (côté navigateur) |
 | `frontend/src/api.ts` | Appels au backend avec preuve DPoP et cookies |
 | `tools/dpop_proof.py` | Générateur de preuves DPoP, valides ou volontairement invalides |
-| `attacks/` | Sept scénarios rejouables (voir ci-dessous) |
+| `attacks/` | Onze scénarios rejouables (voir ci-dessous) |
+| [`benchmarks/`](benchmarks/) | Mesures reproductibles du coût de DPoP (navigateur, serveur, bout en bout) : méthode, résultats, données brutes et limites |
 
 ## Le générateur de preuves
 

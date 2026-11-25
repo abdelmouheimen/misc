@@ -1,19 +1,19 @@
-# Rapport méthodologique — coût de DPoP dans le dpop-reader-kit
+# Méthodologie — coût de DPoP dans le dpop-reader-kit
 
 | | |
 |---|---|
-| Révision mesurée | `8e8ee37` (`origin/main`, révision publiée citée par l'article) |
+| Révision mesurée | `8e8ee37`, révision publiée du PoC au moment de la campagne. Les corrections ultérieures du PoC ne sont pas couvertes par ces mesures ([VALIDATION.md](VALIDATION.md) §7) |
 | Campagne | 24-25 novembre 2026, 4 h 40, machine unique |
 | Résultats bruts | `results/browser/20261124T213707Z`, `results/jvm/20261124T213730Z`, `results/load/20261125T000047Z` |
 | Synthèse générée | `results/summary/` (`RESULTS.md`, CSV, `figures/`) |
 
-> **Compléments :** les chiffres de ce rapport sont recalculés depuis les données brutes par `scripts/verify_numbers.py`. La relecture critique et les réserves supplémentaires sont dans [`AUDIT_SCIENTIFIQUE.md`](AUDIT_SCIENTIFIQUE.md). La mise en perspective externe est dans [`ANALYSE.md`](ANALYSE.md).
+> **Compléments :** les chiffres de ce document sont recalculés depuis les données brutes par `scripts/verify_numbers.py`. La contre-vérification, les biais, les réserves et la non-régression du PoC sont dans [`VALIDATION.md`](VALIDATION.md). La mise en perspective externe est dans [`ANALYSIS.md`](ANALYSIS.md).
 
 ## 1. Résumé
 
 Trois niveaux de mesure, gardés séparés : leurs chiffres ne s'additionnent pas.
 
-- **Navigateur :** une preuve DPoP coûte **65 µs** en médiane (`buildDPopProof()`, Chromium 159), p99 155 µs. Elle pèse 468 octets. La paire de clés, générée une fois par session, coûte 50 µs.
+- **Navigateur :** une preuve DPoP coûte **65 µs** en médiane (`buildDPopProof()`, Chromium 159), p99 155 µs. Elle pèse 468 octets. Une fois par session, la génération de la paire ECDSA P-256 seule coûte 35 µs, et l'initialisation complète (`initializeDPopKeyPair()`, génération puis export de la JWK publique) 50 µs.
 - **Serveur, isolé :** `DpopProofValidator.validate()` coûte **524 µs** par preuve sur un thread, avec un store anti-rejeu vide. La vérification de la signature ES256 en représente l'essentiel, les autres étapes coûtent quelques microsecondes chacune. Le coût croît avec la taille du store anti-rejeu, à cause de sa purge en O(N) : 641 µs à 12 000 entrées, 1 322 µs à 60 000.
 - **Bout en bout, de 10 à 100 req/s :** sur le renouvellement du refresh token, DPoP ajoute en médiane :
   - **+0,76 à +0,91 ms** de latence HTTP p50 (+20 à +22 %) ;
@@ -31,7 +31,7 @@ Trois niveaux de mesure, gardés séparés : leurs chiffres ne s'additionnent pa
   - `frontend/src/dpopService.ts` ;
   - `backend/src/main/kotlin`, compilé tel quel dans le module JMH ;
   - l'image Docker du backend construite depuis `8e8ee37` ;
-- l'opération protégée choisie est le renouvellement du refresh token (`POST /api/login/refresh`), seule opération du PoC qui exige une preuve.
+- l'opération protégée choisie est le renouvellement du refresh token (`POST /login/refresh`), seule opération du PoC qui exige une preuve.
 
 **Hors périmètre :**
 - TLS ;
@@ -123,15 +123,18 @@ Tout le reste est identique : image, endpoints, rotation, détection de réutili
 
 ## 5. Résultats
 
-### 5.1 Navigateur (figure 2 : `results/summary/figures/fig2_operations_cryptographiques`)
+### 5.1 Navigateur (figure 2 : [`fig2_operations_cryptographiques.png`](results/summary/figures/fig2_operations_cryptographiques.png))
 
 | Opération (code du PoC) | Médiane | Moyenne | p95 | p99 | Fréquence |
 |---|---:|---:|---:|---:|---|
+| Génération de la paire ECDSA P-256 seule (`generateKey`) | 35 µs | 37 µs | 45 µs | 70 µs | une fois par session |
+| Export de la JWK publique seul (`exportKey`) | 10 µs | 12 µs | 15 µs | 25 µs | une fois par session |
 | `initializeDPopKeyPair()` (génération + export) | 50 µs | 51 µs | 65 µs | 100 µs | une fois par session |
 | `computeJkt()` | ≈ 5 µs (moyenne en lot) | 7 µs | 10 µs | 20 µs | une fois par session |
 | `buildDPopProof()` | **65 µs** | 70 µs | 85 µs | 155 µs | à chaque requête protégée |
 | dont signature ECDSA seule | 50 µs | 53 µs | 65 µs | 105 µs | |
 
+- **Pas de somme :** chaque ligne est une série distincte. Les médianes de la génération (35 µs) et de l'export (10 µs) ne reconstituent pas exactement celle de l'initialisation complète (50 µs), mesurée directement.
 - **Dispersion entre séries :** les médianes varient de moins de 5 % d'une série à l'autre.
 - **Taille :** une preuve fait 468 octets, soit 476 octets pour la ligne d'en-tête `DPoP: …`. Sous k6, elle ne fait que 466 octets, car l'URL `htu` y est plus courte.
 
@@ -238,7 +241,7 @@ Quand la charge demandée est constante, une capacité qui décroît signale un 
 **Ce qu'on peut en dire :**
 - Ce goulot existe aussi sans DPoP. C'est une simplification assumée du PoC (stockage en mémoire, une seule instance), pas un coût de DPoP.
 - DPoP s'effondre un peu plus tôt, ce qui est cohérent avec son surcoût CPU par requête. L'écart n'est pas chiffré, faute de mesures valides.
-- **Conséquence :** cette campagne ne publie aucun débit maximal, ni avec ni sans DPoP. Pour mesurer le coût de DPoP au-delà de 100 req/s, il faudrait d'abord une table des jetons indexée par utilisateur et purgée, ce qui modifierait le PoC et sort du périmètre de la mission.
+- **Conséquence :** cette campagne ne publie aucun débit maximal, ni avec ni sans DPoP. Pour mesurer le coût de DPoP au-delà de 100 req/s, il faudrait d'abord une table des jetons indexée par utilisateur et purgée, ce qui modifierait le PoC et sort du périmètre de cette campagne.
 
 **Effet aux débits valides :** la même dérive existe à 100 req/s, en plus faible. Les valeurs absolues dépendent donc de la taille de la table. La comparaison appariée reste équitable : à débit égal, les deux modes effectuent le même nombre de renouvellements et leurs tables grossissent au même rythme (environ 48 000 entrées en fin d'exécution à 100 req/s dans les deux modes).
 
@@ -267,21 +270,13 @@ Quand la charge demandée est constante, une capacité qui décroît signale un 
    - l'estimation des allocations par JFR se fait par différence de tas entre GC, et reste approximative avec peu de GC (10 req/s).
 8. **Variabilité :** seulement 3 répétitions par configuration, d'où des plages [min–max] et non des intervalles de confiance. Les plages de p95 et p99 sont larges ; la médiane de la latence et le CPU par requête sont les indicateurs les plus stables.
 
-## 8. Non-régression après campagne
+## 8. Non-régression du PoC
 
-Contrôles effectués le 25 novembre 2026, après la campagne :
-
-| Contrôle | Résultat |
-|---|---|
-| `mvn test` dans `backend/` (JDK 25.0.2) | 28 tests, 0 échec, 0 erreur (`RefreshFlowTest` 4, `RefreshRotationConcurrencyTest` 24) |
-| `git diff 8e8ee37` hors `benchmarks/` | vide : aucun fichier du PoC modifié |
-| Valeurs par défaut | `application.yml` `dpop.required: true`, `docker-compose.yml` `DPOP_REQUIRED: "true"`, inchangés |
-| Conteneurs de benchmark | arrêtés et supprimés, réseau `internal` supprimé ; aucun port n'a été publié |
-| Recherche de secrets dans les fichiers versionnés (`eyJ`, `"d":`, `PRIVATE KEY`, `BEGIN`, archives `.gz` décompressées) | aucune occurrence dans les résultats. Seule correspondance : la ligne de `RAPPORT_NON_REGRESSION.md` qui cite ces motifs |
-| Fichiers non versionnés | `k6.csv.gz`, `backend.jfr`, `jmh.json` non compressé, essais `smoke*` : exclus par `.gitignore` |
+Les tests du backend, les scénarios d'attaque, l'isolement du mode sans DPoP et la recherche de secrets, avant et après la campagne, sont détaillés dans [VALIDATION.md](VALIDATION.md) §6.
 
 ## 9. Reproduire
 
-Voir `README.md`. En résumé :
-- `scripts/run_all.sh` rejoue toute la campagne (4 h 40 sur cette machine) ;
-- `scripts/analyze.py`, `scripts/load_timeline.py` et `scripts/jfr_hotspots.sh` régénèrent la synthèse à partir des résultats bruts.
+Voir le [README](README.md) §9. En résumé :
+- `scripts/run_all.sh` rejoue toute la campagne (4 h 40 sur la machine de référence) ;
+- `scripts/verify_numbers.py` et `scripts/figures.py` fonctionnent avec les seules données versionnées ;
+- `scripts/analyze.py`, `scripts/load_timeline.py` et `scripts/jfr_hotspots.sh` ont besoin des résultats bruts complets (`k6.csv.gz`, `backend.jfr`). Ces fichiers ne sont pas versionnés : ces trois scripts ne se rejouent donc qu'après une nouvelle campagne.
