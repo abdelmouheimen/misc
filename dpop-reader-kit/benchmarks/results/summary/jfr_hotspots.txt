@@ -1,0 +1,90 @@
+Campagne 20261125T000047Z, répétition 1
+
+=== 100 req/s, bearer
+--- événements (nombre, octets)
+ jdk.ExecutionSample                      2887         34247
+ jdk.JavaMonitorEnter                       63          1516
+--- contention de moniteur : point d'attente (nombre d'événements)
+     30 com.example.dpoplab.TokenStore.createTokens(String, String) line: 57
+     27 com.example.dpoplab.TokenStore.refresh(String, String) line: 87
+      3 tools.jackson.databind.SerializationContext.<init>(TokenStreamFactory, SerializationConfig, GeneratorSettings, SerializerFactory, SerializerCache) line: 197
+--- échantillons CPU : méthode au sommet de la pile (nombre)
+    212 com.example.dpoplab.TokenStore.revokeAccessForUser(String)
+     11 com.nimbusds.jose.util.Base64Codec.encodeToString(byte[], boolean)
+      7 org.apache.tomcat.util.net.NioEndpoint$Poller.run()
+      6 org.apache.catalina.connector.RequestFacade.getAttribute(String)
+      6 com.nimbusds.jose.shaded.gson.internal.LinkedTreeMap.findByObject(Object)
+
+=== 100 req/s, dpop
+--- événements (nombre, octets)
+ jdk.ExecutionSample                      3939         46791
+ jdk.JavaMonitorEnter                       85          2040
+--- contention de moniteur : point d'attente (nombre d'événements)
+     37 com.example.dpoplab.TokenStore.createTokens(String, String) line: 57
+     24 com.nimbusds.jose.shaded.gson.Gson.newJsonReader(Reader) line: 1078
+     12 com.example.dpoplab.TokenStore.refresh(String, String) line: 87
+--- échantillons CPU : méthode au sommet de la pile (nombre)
+    244 com.example.dpoplab.TokenStore.revokeAccessForUser(String)
+     50 com.example.dpoplab.DpopProofValidator.doValidate(String, String, String)
+     17 com.nimbusds.jose.util.Base64Codec.encodeToString(byte[], boolean)
+     10 com.nimbusds.jose.shaded.gson.internal.bind.MapTypeAdapterFactory$Adapter.write(JsonWriter, Map)
+     10 com.nimbusds.jose.shaded.gson.internal.LinkedTreeMap.find(Object, boolean)
+
+=== 250 req/s, bearer
+--- événements (nombre, octets)
+ jdk.JavaMonitorEnter                    13360        360305
+ jdk.ExecutionSample                     12314        151813
+--- contention de moniteur : point d'attente (nombre d'événements)
+  12787 com.example.dpoplab.TokenStore.refresh(String, String) line: 87
+    492 com.example.dpoplab.TokenStore.createTokens(String, String) line: 57
+     19 org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerAdapter.invokeHandlerMethod(HttpServletRequest, HttpServletResponse, HandlerMethod) line: 917
+--- échantillons CPU : méthode au sommet de la pile (nombre)
+   1834 com.example.dpoplab.TokenStore.revokeAccessForUser(String)
+     37 com.nimbusds.jose.util.Base64Codec.encodeToString(byte[], boolean)
+     24 org.springframework.http.ResponseCookie$Rfc6265Utils.validateCookieName(String)
+     18 tools.jackson.core.json.UTF8JsonGenerator._writeStringSegments(String, boolean)
+     17 org.apache.tomcat.util.http.parser.HttpHeaderParser.parseHeader()
+
+=== 250 req/s, dpop
+--- événements (nombre, octets)
+ jdk.ExecutionSample                     16452        205738
+ jdk.JavaMonitorEnter                    15184        408175
+--- contention de moniteur : point d'attente (nombre d'événements)
+  14599 com.example.dpoplab.TokenStore.refresh(String, String) line: 87
+    495 com.example.dpoplab.TokenStore.createTokens(String, String) line: 57
+--- échantillons CPU : méthode au sommet de la pile (nombre)
+   1016 kotlin.jvm.internal.Intrinsics.areEqual(Object, Object)
+     55 com.example.dpoplab.TokenStore.revokeAccessForUser(String)
+     46 com.nimbusds.jose.util.Base64Codec.encodeToString(byte[], boolean)
+     23 org.apache.coyote.http11.Http11OutputBuffer.write(MessageBytes)
+     21 com.nimbusds.jose.shaded.gson.internal.bind.MapTypeAdapterFactory$Adapter.write(JsonWriter, Map)
+
+=== 500 req/s, bearer
+--- événements (nombre, octets)
+ jdk.JavaMonitorEnter                    63177       1706184
+ jdk.ExecutionSample                     17715        220299
+--- contention de moniteur : point d'attente (nombre d'événements)
+  61880 com.example.dpoplab.TokenStore.refresh(String, String) line: 87
+    979 com.example.dpoplab.TokenStore.createTokens(String, String) line: 57
+    158 org.springframework.web.servlet.mvc.method.annotation.ServletRequestDataBinderFactory.createBinderInstance(Object, String, NativeWebRequest) line: 55
+--- échantillons CPU : méthode au sommet de la pile (nombre)
+   3427 com.example.dpoplab.TokenStore.revokeAccessForUser(String)
+     91 com.example.dpoplab.AuthController.refresh(HttpServletRequest, HttpServletResponse)
+     60 com.nimbusds.jose.util.Base64Codec.encodeToString(byte[], boolean)
+     17 com.nimbusds.jose.shaded.gson.internal.LinkedTreeMap.findByObject(Object)
+     16 tools.jackson.core.json.UTF8JsonGenerator._writeStringSegments(String, boolean)
+
+=== 500 req/s, dpop
+--- événements (nombre, octets)
+ jdk.JavaMonitorEnter                    59934       1616749
+ jdk.ExecutionSample                     22334        277593
+--- contention de moniteur : point d'attente (nombre d'événements)
+  58509 com.example.dpoplab.TokenStore.refresh(String, String) line: 87
+    973 com.example.dpoplab.TokenStore.createTokens(String, String) line: 57
+     91 org.springframework.web.servlet.mvc.method.annotation.ServletRequestDataBinderFactory.createBinderInstance(Object, String, NativeWebRequest) line: 55
+--- échantillons CPU : méthode au sommet de la pile (nombre)
+   1838 kotlin.jvm.internal.Intrinsics.areEqual(Object, Object)
+    113 com.example.dpoplab.AuthController.refresh(HttpServletRequest, HttpServletResponse)
+     66 com.nimbusds.jose.util.Base64Codec.encodeToString(byte[], boolean)
+     65 com.example.dpoplab.TokenStore.revokeAccessForUser(String)
+     15 org.apache.catalina.connector.Response.addHeader(String, String, Charset)

@@ -1,0 +1,13 @@
+{
+  "name": "dpop-browser-bench",
+  "private": true,
+  "type": "module",
+  "description": "Benchmark Web Crypto du service DPoP de la SPA, dans Chromium piloté par Playwright.",
+  "scripts": {
+    "bench": "node run-browser-bench.mjs"
+  },
+  "dependencies": {
+    "esbuild": "0.28.2",
+    "playwright": "1.65.1"
+  }
+}

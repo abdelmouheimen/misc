@@ -1,0 +1,4 @@
+{"rep": 1, "rate": 10, "mode": "bearer", "k6StartEpoch": 1795565936.381370200,
+ "cpuWindow": {"t0": 1795566059.459790000, "t1": 1795566176.569511300, "backendUsageUsec": [21990449, 27767788], "k6UsageUsec": [2348147, 4205718],
+               "backendMemBytes": [650518528, 888344576]},
+ "tokenTable": {"total": 4800, "active": 20, "bound": 0}}

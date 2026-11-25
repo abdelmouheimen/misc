@@ -1,0 +1,202 @@
+{
+ "date": "2026-11-24T21:37:10.732592+00:00",
+ "git": {
+  "commit": "8e8ee37e9f313d94e51cb82df335cd005e820f5e",
+  "branch": "bench/dpop-cost",
+  "pocSourcesModified": false
+ },
+ "os": "Microsoft Windows 11 Famille 10.0.26200",
+ "cpu": {
+  "name": "Intel(R) Core(TM) Ultra 7 155H",
+  "cores": "16",
+  "logicalProcessors": "22"
+ },
+ "cpuTopology": {
+  "logical": [
+   {
+    "logical": 0,
+    "core": 0,
+    "efficiencyClass": 1
+   },
+   {
+    "logical": 1,
+    "core": 0,
+    "efficiencyClass": 1
+   },
+   {
+    "logical": 2,
+    "core": 2,
+    "efficiencyClass": 0
+   },
+   {
+    "logical": 3,
+    "core": 3,
+    "efficiencyClass": 0
+   },
+   {
+    "logical": 4,
+    "core": 4,
+    "efficiencyClass": 0
+   },
+   {
+    "logical": 5,
+    "core": 5,
+    "efficiencyClass": 0
+   },
+   {
+    "logical": 6,
+    "core": 6,
+    "efficiencyClass": 0
+   },
+   {
+    "logical": 7,
+    "core": 7,
+    "efficiencyClass": 0
+   },
+   {
+    "logical": 8,
+    "core": 8,
+    "efficiencyClass": 0
+   },
+   {
+    "logical": 9,
+    "core": 9,
+    "efficiencyClass": 0
+   },
+   {
+    "logical": 10,
+    "core": 10,
+    "efficiencyClass": 1
+   },
+   {
+    "logical": 11,
+    "core": 10,
+    "efficiencyClass": 1
+   },
+   {
+    "logical": 12,
+    "core": 12,
+    "efficiencyClass": 1
+   },
+   {
+    "logical": 13,
+    "core": 12,
+    "efficiencyClass": 1
+   },
+   {
+    "logical": 14,
+    "core": 14,
+    "efficiencyClass": 1
+   },
+   {
+    "logical": 15,
+    "core": 14,
+    "efficiencyClass": 1
+   },
+   {
+    "logical": 16,
+    "core": 16,
+    "efficiencyClass": 1
+   },
+   {
+    "logical": 17,
+    "core": 16,
+    "efficiencyClass": 1
+   },
+   {
+    "logical": 18,
+    "core": 18,
+    "efficiencyClass": 1
+   },
+   {
+    "logical": 19,
+    "core": 18,
+    "efficiencyClass": 1
+   },
+   {
+    "logical": 20,
+    "core": 20,
+    "efficiencyClass": 0
+   },
+   {
+    "logical": 21,
+    "core": 21,
+    "efficiencyClass": 0
+   }
+  ],
+  "pcores": [
+   0,
+   1,
+   10,
+   11,
+   12,
+   13,
+   14,
+   15,
+   16,
+   17,
+   18,
+   19
+  ],
+  "pcoreMask": "0xFFC03"
+ },
+ "memoryGiB": 63.5,
+ "power": {
+  "batteryStatus": "2",
+  "note": "Win32_Battery.BatteryStatus : 1 = sur batterie, 2 = sur secteur"
+ },
+ "hostJava": [
+  "java version \"25.0.2\" 2026-01-20 LTS",
+  "Java(TM) SE Runtime Environment (build 25.0.2+10-LTS-69)",
+  "Java HotSpot(TM) 64-Bit Server VM (build 25.0.2+10-LTS-69, mixed mode, sharing)"
+ ],
+ "hostJcaProviders": {
+  "java.vm": "Java HotSpot(TM) 64-Bit Server VM 25.0.2+10-LTS-69",
+  "SHA256withECDSA": "SunEC version 25",
+  "EC.KeyPairGenerator": "SunEC version 25",
+  "SHA-256": "SUN version 25",
+  "RSA-OAEP": "SunJCE version 25"
+ },
+ "containerJava": [
+  "openjdk version \"25.0.5.1\" 2026-11-17 LTS",
+  "OpenJDK Runtime Environment Temurin-25.0.5.1+2 (build 25.0.5.1+2-LTS)",
+  "OpenJDK 64-Bit Server VM Temurin-25.0.5.1+2 (build 25.0.5.1+2-LTS, mixed mode, sharing)"
+ ],
+ "containerJcaProviders": {
+  "java.vm": "OpenJDK 64-Bit Server VM 25.0.5.1+2-LTS",
+  "SHA256withECDSA": "SunEC version 25",
+  "EC.KeyPairGenerator": "SunEC version 25",
+  "SHA-256": "SUN version 25",
+  "RSA-OAEP": "SunJCE version 25"
+ },
+ "springBoot": "4.1.1",
+ "nimbusJoseJwt": "10.9.1",
+ "jmh": "1.37",
+ "node": "v22.14.0",
+ "playwright": "1.65.1",
+ "docker": {
+  "server": "27.5.1",
+  "engineCpus": "22",
+  "engineMemBytes": "33367703552",
+  "kernel": "5.15.167.4-microsoft-standard-WSL2",
+  "os": "Docker Desktop"
+ },
+ "otherRunningContainers": [
+  "couplefinance-clamav-1 (clamav/clamav:1.4)",
+  "couplefinance-minio-1 (bitnamilegacy/minio:2025.7.23)",
+  "couplefinance-postgres-1 (postgres:17-alpine)",
+  "flowgym-backend (flogym-backend)",
+  "flowgym-db (postgres:16-alpine)",
+  "gymunity-postgres (postgres:16-alpine)",
+  "myfit-pgadmin-dev (dpage/pgadmin4:latest)",
+  "myfit-postgres-dev (postgres:16-alpine)",
+  "myfit-redis-dev (redis:7-alpine)",
+  "myfit-minio-dev (minio/minio:latest)",
+  "myfit-mailhog-dev (mailhog/mailhog:latest)"
+ ],
+ "backendImage": {
+  "tag": "dpop-lab-backend:bench-8e8ee37",
+  "id": "sha256:745e25c51bd116e60b0a678d8aa17ce4fc5062c00e37d4289aca4739fcccf2f6"
+ },
+ "k6": "k6-v2.4.0-linux-amd64"
+}

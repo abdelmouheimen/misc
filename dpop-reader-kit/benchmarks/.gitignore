@@ -1,0 +1,18 @@
+# Dépendances et outils téléchargés
+browser/node_modules/
+load/.tools/
+jvm/target/
+
+# Résultats bruts volumineux : conservés localement, non versionnés.
+# Les échantillons de la phase de mesure (measure_samples.csv.gz) et les synthèses le sont.
+results/**/k6.csv.gz
+results/**/backend.jfr
+results/**/smoke*/
+
+# Sortie JMH non compressée (≈ 13 Mo) : seule sa copie jmh.json.gz est versionnée.
+results/**/jmh.json
+# Généré par maven-shade-plugin
+jvm/dependency-reduced-pom.xml
+
+# Cache Python
+__pycache__/

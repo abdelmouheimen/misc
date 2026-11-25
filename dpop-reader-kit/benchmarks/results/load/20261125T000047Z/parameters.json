@@ -1,0 +1,5 @@
+{"rates": "10 50 100 250 500", "reps": 3, "warmupS": 120, "durationS": 120, "seed": 20261124,
+ "cooldownS": 10, "k6": "v2.4.0", "commit": "8e8ee37", "backendImage": "dpop-lab-backend:bench-8e8ee37",
+ "backendCpus": 4, "backendMem": "2g", "k6Cpus": 4, "k6Mem": "2g",
+ "jvmOptions": "-Xms1g -Xmx1g -XX:+UseG1GC -XX:ActiveProcessorCount=4 (+ JFR default)",
+ "network": "réseau Docker interne (bridge, internal), HTTP/1.1 sans TLS, aucun port publié"}

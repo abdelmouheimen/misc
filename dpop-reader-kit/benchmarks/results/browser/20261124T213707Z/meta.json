@@ -1,0 +1,29 @@
+{
+  "date": "2026-11-24T21:37:30.117Z",
+  "params": {
+    "series": 5,
+    "warmup": 200,
+    "iterations": 2000,
+    "batchOps": 500,
+    "htu": "http://localhost:8099/login/refresh"
+  },
+  "browserVersion": "159.0.8154.6",
+  "playwrightVersion": "1.65.1",
+  "node": "v22.14.0",
+  "timerResolutionMs": [
+    0.004999995231628418,
+    0.004999995231628418,
+    0.004999995231628418,
+    0.004999995231628418,
+    0.004999995231628418
+  ],
+  "crossOriginIsolated": true,
+  "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/159.0.8154.6 Safari/537.36",
+  "hardwareConcurrency": 22,
+  "proofSize": {
+    "min": 468,
+    "max": 468,
+    "count": 2700,
+    "headerLineBytes": 476
+  }
+}

@@ -1,0 +1,48 @@
+# Environnement ISOLÉ du benchmark de bout en bout. Ne sert jamais au fonctionnement normal.
+#
+# - Aucun port n'est publié : le backend n'est joignable que depuis le réseau interne `benchnet`,
+#   par le conteneur k6. Rien n'est exposé sur l'hôte ni a fortiori publiquement.
+# - Une seule image pour les deux configurations. Elles ne diffèrent que par DPOP_REQUIRED,
+#   un réglage qui existe déjà dans le PoC (voir docker-compose.yml et README) :
+#     dpop   : DPOP_REQUIRED=true  (valeur par défaut du PoC)
+#     bearer : DPOP_REQUIRED=false (baseline : mêmes endpoints, rotation, cookies, JWT chiffrés)
+#   La baseline n'ajoute aucun mécanisme : elle réutilise ce réglage, ici seulement.
+# - Ressources identiques et figées : CPU, mémoire, options JVM, réseau.
+#
+# Lancé par scripts/run_load.sh ; à ne pas utiliser à la main pour autre chose.
+name: dpop-bench
+
+services:
+  backend:
+    image: ${BACKEND_IMAGE:?BACKEND_IMAGE requis}
+    environment:
+      DPOP_REQUIRED: ${DPOP_REQUIRED:?DPOP_REQUIRED requis}
+      DPOP_PUBLIC_BASE_URL: "http://backend:8099"
+      CORS_ALLOWED_ORIGIN: "http://localhost:5173"
+      JAVA_TOOL_OPTIONS: >-
+        -Xms1g -Xmx1g -XX:+UseG1GC -XX:ActiveProcessorCount=4
+        -XX:StartFlightRecording=filename=/jfr/backend.jfr,settings=default,dumponexit=true
+    cpus: 4
+    mem_limit: 2g
+    volumes:
+      - ${RUN_DIR:?RUN_DIR requis}:/jfr
+    networks: [benchnet]
+
+  k6:
+    image: alpine:latest
+    profiles: [load]
+    entrypoint: ["/k6/k6"]
+    working_dir: /scripts
+    cpus: 4
+    mem_limit: 2g
+    environment:
+      BASE_URL: "http://backend:8099"
+    volumes:
+      - ${K6_DIR:?K6_DIR requis}:/k6:ro
+      - ./k6:/scripts:ro
+      - ${RUN_DIR}:/out
+    networks: [benchnet]
+
+networks:
+  benchnet:
+    internal: true
